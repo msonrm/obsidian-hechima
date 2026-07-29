@@ -347,6 +347,78 @@ module.exports = class HechimaProbePlugin extends Plugin {
         return { maxHeld, nested };
     }
 
+    /**
+     * 押下区間を**再構成**する。
+     *
+     * 環境によっては、押下が無名（IME 由来の合成）でも **離鍵だけは本物が届く**
+     * （2026-07-29 実測: Android スマホ + Bluetooth キーボード）。この場合、
+     *   押下時刻 = 無名 keydown（＝確定時点 ≒ 実際に押した瞬間）
+     *   キーの同定と離鍵時刻 = その後に来る、識別できた keyup
+     * を突き合わせれば区間が戻る。**情報は入力に在るが、2 種類のイベントに分かれている**。
+     *
+     * 対応づけは文字で行う。先着順にすると、保持中のキー（a を押したまま s d f）で
+     * a の押下が s の離鍵に誤って結び付く。beforeinput の data と keyup の key を
+     * 大文字小文字を無視して照合すれば、保持していても正しい相手に届く。
+     */
+    reconstruct() {
+        const pairs = [];
+        const log = this.keyLog;
+        const identified = (k) => k.code && k.key && k.key !== "Unidentified";
+
+        // 実 keydown と対になっている keyup は、その押下のもの。再構成に使ってはいけない。
+        // （ChromeOS の実測ログでは、これを見ていなかったせいで無名の "a" が 6.7 秒後の
+        //  Alt+A の離鍵と結び付き、保持 6706ms という偽の区間ができた）
+        const claimed = new Set();
+        const open = new Map();
+        for (let i = 0; i < log.length; i += 1) {
+            const k = log[i];
+            if (!identified(k)) continue;
+            if (k.type === "down") open.set(k.code, i);
+            else if (open.has(k.code)) {
+                claimed.add(i);
+                open.delete(k.code);
+            }
+        }
+
+        // 人間の打鍵として無理のない上限。これを超える対応づけは誤りとみなす
+        const MAX_HOLD_MS = 5000;
+
+        for (let i = 0; i < log.length; i += 1) {
+            const bi = log[i];
+            if (bi.type !== "input" || typeof bi.data !== "string" || bi.data.length !== 1) continue;
+            // 直前の無名 keydown を押下時刻とみなす
+            let t0 = bi.t;
+            for (let j = i - 1; j >= 0 && j >= i - 3; j -= 1) {
+                if (log[j].type === "down") {
+                    t0 = log[j].t;
+                    break;
+                }
+            }
+            // 以降で最初に来る「同じ文字の、識別できた keyup」
+            for (let j = i + 1; j < log.length; j += 1) {
+                const k = log[j];
+                if (k.t - t0 > MAX_HOLD_MS) break;
+                if (k.type !== "up" || !identified(k)) continue;
+                if (claimed.has(j)) continue; // 実 keydown の相方は取らない
+                if (k.key.toLowerCase() !== bi.data.toLowerCase()) continue;
+                pairs.push({ char: bi.data, code: k.code, t0, t1: k.t });
+                break;
+            }
+        }
+        // 再構成した区間どうしの入れ子（あるキーの保持中に別のキーが押された回数）
+        let nested = 0;
+        for (const p of pairs) {
+            for (const q of pairs) {
+                if (p === q) continue;
+                if (q.t0 > p.t0 && q.t0 < p.t1) {
+                    nested += 1;
+                    break;
+                }
+            }
+        }
+        return { pairs, nested };
+    }
+
     static median(xs) {
         if (!xs.length) return null;
         const s = [...xs].sort((a, b) => a - b);
@@ -385,6 +457,14 @@ module.exports = class HechimaProbePlugin extends Plugin {
         lines.push(`保持時間    識別キー ${med(namedHold)} / 無名キー ${med(anonHold)}`);
         const overlap = this.keyOverlap();
         lines.push(`押下の重なり 同時に最大 ${overlap.maxHeld} キー / 入れ子 ${overlap.nested} 回`);
+        const rec = this.reconstruct();
+        const recHold = rec.pairs.map((p) => p.t1 - p.t0);
+        if (rec.pairs.length) {
+            lines.push(
+                `再構成      ${rec.pairs.length}/${insertedText.length} 件が復元 ` +
+                    `/ 保持 ${med(recHold)} / 入れ子 ${rec.nested} 回`
+            );
+        }
 
         lines.push("");
         lines.push("== 判定 ==");
@@ -394,18 +474,36 @@ module.exports = class HechimaProbePlugin extends Plugin {
             // 無名が 1 件でもあれば物理キーとしては駄目。修飾キーだけは識別できる環境が
             // あるので、「識別できたものが 0 件か」で分岐すると取り逃がす。
             const synthetic = anonHold.length && (HechimaProbePlugin.median(anonHold) ?? 99) < 10;
+            // 押下が無名でも、離鍵が本物なら区間は再構成できる。合成かどうかを言う前にこちらを見る。
+            const recOk =
+                rec.pairs.length >= Math.max(1, Math.floor(insertedText.length * 0.8)) &&
+                (HechimaProbePlugin.median(recHold) ?? 0) >= 30;
             lines.push(`物理キー不可  ${anonymous} 件が無名（code 空 / Unidentified）`);
             if (identified.length) {
                 lines.push(`              識別できた ${identified.length} 件は修飾キーや、`);
                 lines.push("              印字にならない組み合わせ（Alt+/Ctrl+）の可能性が高い");
             }
             lines.push("              印字キーが OS の入力方式フレームワークに食われている");
-            if (synthetic) {
+            if (recOk) {
+                lines.push("");
+                lines.push(`L3 相当（要再構成）  押下は無名だが **離鍵は本物**（code 付き）。`);
+                lines.push(`              ${rec.pairs.length}/${insertedText.length} 件の押下区間を復元でき、`);
+                lines.push(`              保持時間の中央値は ${HechimaProbePlugin.median(recHold)}ms（人間の打鍵の範囲）`);
+                if (rec.nested > 0) {
+                    lines.push(`              入れ子も ${rec.nested} 回観測 = 保持中に別のキーを打った事実が残る`);
+                    lines.push("              → 相互シフト（薙刀式）・同時打鍵（新下駄）も組める見込み。");
+                    lines.push("                ただし配線は素直ではない: キーの同定が**離鍵まで確定しない**ので、");
+                    lines.push("                押下時は beforeinput の文字で代用し、文字→物理キーの対応を仮定する");
+                } else {
+                    lines.push("              入れ子は未観測 — 押したまま別のキーを打って測り直すこと");
+                }
+            } else if (synthetic) {
                 lines.push("");
                 lines.push(
                     `保持時間なし  無名キーの押下時間の中央値が ${HechimaProbePlugin.median(anonHold)}ms`
                 );
                 lines.push("              = 実際の押下ではなく確定時点の合成イベント。");
+                lines.push("              識別できる離鍵も来ないので区間を再構成できない。");
                 lines.push("              ホールドを意味に使う方式（薙刀式の相互シフト・新下駄・SandS）は");
                 lines.push("              近似ではなく**原理的に**組めない（情報が入力に無い）");
             }
