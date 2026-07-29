@@ -206,16 +206,18 @@ module.exports = class HechimaProbePlugin extends Plugin {
     }
 
     // ------------------------------------------------------------------
-    // キー入力の偵察 — エディタが keymap-v2-sketch §1.5 の L3 かを実機で決める。
+    // キー入力の偵察 — エディタが keymap-v2-sketch §1.5 の何段かを実機で決める。
     //
-    // L3（keydown + keyup が両方届く）なら押下集合が構成できるので、薙刀式の相互シフトや
-    // 新下駄まで載る。keyup が来ない L2 なら「D ホールド中の x,y,z」と「D 単打後の x,y,z」が
-    // 同一イベント列になり、判別は近似ではなく原理的に不可能 = 逐次系だけになる。
+    // 測るのは 4 つ。**イベントの有無と、そこに載っている情報量は別物**である点が肝で、
+    // 初版はここを取り違えていた（数だけ数えて L3 と判定していた）。
     //
-    // 同時に 3 つ測る:
-    //   1. keyup が届くか（= L3 か）
-    //   2. preventDefault で文字入力を抑止できるか（できないと IME を載せられない）
-    //   3. isComposing が立たないか（立つ = OS の IME が先に食っている）
+    //   1. keydown / keyup が届くか … 押下集合を作れるかの必要条件
+    //   2. **そのイベントがキーを識別できるか** … Android は印字キーを IME 経由で処理するため
+    //      keydown は来るのに code が空・key="Unidentified" になる（2026-07-29 実測）。
+    //      押下集合が作れても「どのキーか」が無ければ逐次系すら組めない = L2 未満
+    //   3. preventDefault で文字入力を抑止できるか … できないと IME を載せられない
+    //   4. beforeinput で拾えるか … 2 が駄目でも、文字列として横取りできれば L1 = 逐次系
+    //      （ローマ字・月配列・AZIK）までは載る。救済経路があるかを同時に測る
     // ------------------------------------------------------------------
 
     registerKeyProbe() {
@@ -240,12 +242,27 @@ module.exports = class HechimaProbePlugin extends Plugin {
             return true; // CM6 にも渡さない
         };
 
+        const recordInput = (e) => {
+            if (!this.capturing) return false;
+            this.keyLog.push({
+                t: Math.round(performance.now() - this.captureStartedAt),
+                type: "input",
+                inputType: e.inputType,
+                data: e.data,
+                cancelable: e.cancelable === true,
+                composing: e.isComposing === true,
+            });
+            e.preventDefault();
+            return true;
+        };
+
         // Prec.highest でないと Obsidian 自身のホットキーや CM6 既定 keymap に先を越される
         this.registerEditorExtension(
             Prec.highest(
                 EditorView.domEventHandlers({
                     keydown: (e) => record("down", e),
                     keyup: (e) => record("up", e),
+                    beforeinput: (e) => recordInput(e),
                 })
             )
         );
@@ -277,26 +294,66 @@ module.exports = class HechimaProbePlugin extends Plugin {
         const lines = [];
         const downs = this.keyLog.filter((k) => k.type === "down");
         const ups = this.keyLog.filter((k) => k.type === "up");
+        const inputs = this.keyLog.filter((k) => k.type === "input");
         const composing = this.keyLog.filter((k) => k.composing);
 
+        // 「どのキーか」が載っているか。Android は印字キーを IME 経由で処理するため
+        // keydown は来るのに code が空・key="Unidentified" になる。修飾キーだけは識別できるので、
+        // 件数ではなく**識別できた割合**を見ないと取り違える。
+        const identified = downs.filter((k) => k.code && k.key && k.key !== "Unidentified");
+        const anonymous = downs.length - identified.length;
+        const insertedText = inputs.filter((k) => typeof k.data === "string" && k.data.length);
+        const cancelableInputs = inputs.filter((k) => k.cancelable);
+
+        lines.push("== 計測 ==");
+        lines.push(`イベント    keydown ${downs.length} / keyup ${ups.length} / beforeinput ${inputs.length}`);
+        lines.push(`キー識別    ${identified.length} 件が code を持つ / ${anonymous} 件が無名`);
+        lines.push(`抑止        本文 ${docDelta >= 0 ? "+" : ""}${docDelta} 文字`);
+        lines.push(
+            `beforeinput 打てる文字 ${insertedText.length} 件 / cancelable ${cancelableInputs.length} 件`
+        );
+        lines.push(`isComposing ${composing.length} 件`);
+
+        lines.push("");
         lines.push("== 判定 ==");
-        if (!downs.length) {
-            lines.push("FAIL  keydown が 1 つも届かない — エディタにフォーカスして打鍵したか確認");
+        if (!downs.length && !inputs.length) {
+            lines.push("FAIL  何も届かない — エディタにフォーカスして打鍵したか確認");
+        } else if (anonymous > 0) {
+            // 無名が 1 件でもあれば駄目。修飾キーだけ識別できる環境（Android）があるので、
+            // 「識別できたものが 0 件か」で分岐すると取り逃がす。
+            lines.push(`L2 未満  keydown は届くが ${anonymous} 件が無名（code 空 / Unidentified）`);
+            if (identified.length) {
+                lines.push(`         識別できた ${identified.length} 件は修飾キーの可能性が高い`);
+                lines.push("         （生ログで、打った文字キーに code が付いているか確認）");
+            }
+            lines.push("         印字キーが OS の入力方式フレームワーク経由で処理されている。");
+            lines.push("         押下集合を作れても中身が無いので、配列エンジンは載らない");
         } else if (!ups.length) {
-            lines.push(`L2    keydown ${downs.length} 件 / keyup 0 件 — 押下集合を作れない`);
+            lines.push("L2    keydown は識別できるが keyup が来ない — 押下集合を作れない");
             lines.push("      → 逐次系（ローマ字・月配列・AZIK）のみ。薙刀式・新下駄は原理的に不可");
         } else {
-            lines.push(`L3    keydown ${downs.length} 件 / keyup ${ups.length} 件 — 押下集合を構成できる`);
+            lines.push("L3    keydown / keyup が揃い、キーも識別できる");
             lines.push("      → 相互シフト（薙刀式）・同時打鍵（新下駄）まで載る");
         }
-        lines.push(
-            docDelta === 0
-                ? "OK    preventDefault で文字入力を抑止できた（本文は無変化）"
-                : `FAIL  抑止できていない（本文が ${docDelta} 文字変化した）— IME を載せられない`
-        );
+
+        lines.push("");
+        if (docDelta === 0) {
+            lines.push("OK    preventDefault で文字入力を抑止できた（本文は無変化）");
+        } else {
+            lines.push(`FAIL  抑止できていない（本文が ${docDelta} 文字変化した）`);
+            // キーで止まらなくても beforeinput で止まるなら、文字列レベル（L1）で横取りできる
+            if (insertedText.length && cancelableInputs.length === inputs.length) {
+                lines.push("      ただし beforeinput は全件 cancelable = 文字列としてなら横取りできる");
+                lines.push("      → L1（逐次系のみ）で載せる道は残る");
+            } else if (insertedText.length) {
+                lines.push(`      beforeinput も ${inputs.length - cancelableInputs.length} 件が cancelable でない`);
+            } else {
+                lines.push("      beforeinput にも文字が乗っていない — 横取りの足場が無い");
+            }
+        }
         lines.push(
             composing.length === 0
-                ? "OK    isComposing はどれも立っていない（OS の IME が先に食っていない）"
+                ? "OK    isComposing はどれも立っていない"
                 : `WARN  isComposing が ${composing.length} 件立っている — ` +
                       "OS 側キーボードを英字（ABC）にして測り直すこと"
         );
@@ -307,11 +364,20 @@ module.exports = class HechimaProbePlugin extends Plugin {
             lines.push("(空)");
         } else {
             for (const k of this.keyLog.slice(0, 200)) {
-                lines.push(
-                    `${String(k.t).padStart(6)}ms  ${k.type === "down" ? "▼" : "△"}  ` +
-                        `${(k.code || "?").padEnd(14)} key=${JSON.stringify(k.key)} ` +
-                        `mods=${k.mods}${k.composing ? " composing" : ""}`
-                );
+                const t = String(k.t).padStart(6);
+                if (k.type === "input") {
+                    lines.push(
+                        `${t}ms  ✎  ${String(k.inputType || "?").padEnd(14)} ` +
+                            `data=${JSON.stringify(k.data)} cancelable=${k.cancelable}` +
+                            `${k.composing ? " composing" : ""}`
+                    );
+                } else {
+                    lines.push(
+                        `${t}ms  ${k.type === "down" ? "▼" : "△"}  ` +
+                            `${(k.code || "?").padEnd(14)} key=${JSON.stringify(k.key)} ` +
+                            `mods=${k.mods}${k.composing ? " composing" : ""}`
+                    );
+                }
             }
             if (this.keyLog.length > 200) lines.push(`… 他 ${this.keyLog.length - 200} 件`);
         }
