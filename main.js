@@ -290,6 +290,43 @@ module.exports = class HechimaProbePlugin extends Plugin {
         new Notice("記録中。何か打鍵して、もう一度同じコマンドで停止", 5000);
     }
 
+    /**
+     * keydown〜keyup の保持時間（ms）を集める。`anonymous` で無名キーだけ / 識別キーだけを選ぶ。
+     *
+     * これが判定の核心になる。人間の打鍵は 50〜150ms なので、**保持時間が一桁 ms しか出ない
+     * 場合、そのイベントは実際の押下ではなく確定時点の合成**とみなせる（Android 実測: 無名 2ms /
+     * 実キー 95ms）。保持時間が無ければ、ホールドを意味に使う方式 — 薙刀式の相互シフト、
+     * 新下駄の同時打鍵、SandS — は近似ではなく原理的に組めない。
+     */
+    holdDurations(anonymous) {
+        const isAnon = (k) => !(k.code && k.key && k.key !== "Unidentified");
+        const out = [];
+        const byCode = new Map();
+        const anonQueue = [];
+        for (const k of this.keyLog) {
+            if (k.type !== "down" && k.type !== "up") continue;
+            if (isAnon(k) !== anonymous) continue;
+            if (k.type === "down") {
+                if (anonymous) anonQueue.push(k.t);
+                else byCode.set(k.code, k.t);
+                continue;
+            }
+            // 無名は同定できないので押下順に対応させる（重なりがあれば当然ずれるが、
+            // 「合成かどうか」を見るには十分）
+            const t0 = anonymous ? anonQueue.shift() : byCode.get(k.code);
+            if (t0 == null) continue;
+            if (!anonymous) byCode.delete(k.code);
+            out.push(k.t - t0);
+        }
+        return out;
+    }
+
+    static median(xs) {
+        if (!xs.length) return null;
+        const s = [...xs].sort((a, b) => a - b);
+        return s[Math.floor(s.length / 2)];
+    }
+
     keyReport(docDelta) {
         const lines = [];
         const downs = this.keyLog.filter((k) => k.type === "down");
@@ -304,6 +341,8 @@ module.exports = class HechimaProbePlugin extends Plugin {
         const anonymous = downs.length - identified.length;
         const insertedText = inputs.filter((k) => typeof k.data === "string" && k.data.length);
         const cancelableInputs = inputs.filter((k) => k.cancelable);
+        const namedHold = this.holdDurations(false);
+        const anonHold = this.holdDurations(true);
 
         lines.push("== 計測 ==");
         lines.push(`イベント    keydown ${downs.length} / keyup ${ups.length} / beforeinput ${inputs.length}`);
@@ -313,27 +352,60 @@ module.exports = class HechimaProbePlugin extends Plugin {
             `beforeinput 打てる文字 ${insertedText.length} 件 / cancelable ${cancelableInputs.length} 件`
         );
         lines.push(`isComposing ${composing.length} 件`);
+        const med = (xs) => {
+            const m = HechimaProbePlugin.median(xs);
+            return m === null ? "—" : `${m}ms（${xs.length} 件）`;
+        };
+        lines.push(`保持時間    識別キー ${med(namedHold)} / 無名キー ${med(anonHold)}`);
 
         lines.push("");
         lines.push("== 判定 ==");
         if (!downs.length && !inputs.length) {
             lines.push("FAIL  何も届かない — エディタにフォーカスして打鍵したか確認");
         } else if (anonymous > 0) {
-            // 無名が 1 件でもあれば駄目。修飾キーだけ識別できる環境（Android）があるので、
-            // 「識別できたものが 0 件か」で分岐すると取り逃がす。
-            lines.push(`L2 未満  keydown は届くが ${anonymous} 件が無名（code 空 / Unidentified）`);
+            // 無名が 1 件でもあれば物理キーとしては駄目。修飾キーだけ識別できる環境（Android）が
+            // あるので、「識別できたものが 0 件か」で分岐すると取り逃がす。
+            const synthetic = anonHold.length && (HechimaProbePlugin.median(anonHold) ?? 99) < 10;
+            lines.push(`物理キー不可  ${anonymous} 件が無名（code 空 / Unidentified）`);
             if (identified.length) {
-                lines.push(`         識別できた ${identified.length} 件は修飾キーの可能性が高い`);
-                lines.push("         （生ログで、打った文字キーに code が付いているか確認）");
+                lines.push(`              識別できた ${identified.length} 件は修飾キーや、`);
+                lines.push("              印字にならない組み合わせ（Alt+/Ctrl+）の可能性が高い");
             }
-            lines.push("         印字キーが OS の入力方式フレームワーク経由で処理されている。");
-            lines.push("         押下集合を作れても中身が無いので、配列エンジンは載らない");
+            lines.push("              印字キーが OS の入力方式フレームワークに食われている");
+            if (synthetic) {
+                lines.push("");
+                lines.push(
+                    `保持時間なし  無名キーの押下時間の中央値が ${HechimaProbePlugin.median(anonHold)}ms`
+                );
+                lines.push("              = 実際の押下ではなく確定時点の合成イベント。");
+                lines.push("              ホールドを意味に使う方式（薙刀式の相互シフト・新下駄・SandS）は");
+                lines.push("              近似ではなく**原理的に**組めない（情報が入力に無い）");
+            }
+            lines.push("");
+            if (insertedText.length && cancelableInputs.length === inputs.length && docDelta === 0) {
+                lines.push("L1 可         beforeinput が全件 cancelable で、抑止も効いている");
+                lines.push("              → 逐次系（ローマ字・AZIK・月配列の前置シフト）なら載る");
+                lines.push("              文字列として横取りする経路になり、物理キーは見えない");
+            } else if (insertedText.length) {
+                lines.push("L1 も怪しい   beforeinput に文字は乗るが、抑止しきれていない");
+            } else {
+                lines.push("不可          beforeinput にも文字が乗らない — 横取りの足場が無い");
+            }
         } else if (!ups.length) {
             lines.push("L2    keydown は識別できるが keyup が来ない — 押下集合を作れない");
             lines.push("      → 逐次系（ローマ字・月配列・AZIK）のみ。薙刀式・新下駄は原理的に不可");
         } else {
-            lines.push("L3    keydown / keyup が揃い、キーも識別できる");
-            lines.push("      → 相互シフト（薙刀式）・同時打鍵（新下駄）まで載る");
+            const hold = HechimaProbePlugin.median(namedHold);
+            if (hold !== null && hold < 10) {
+                // 識別できていても押下時間が無ければホールド方式は組めない
+                lines.push("L2 相当  keydown / keyup は揃いキーも識別できるが、");
+                lines.push(`         押下時間の中央値が ${hold}ms = 合成イベントの疑い`);
+                lines.push("         → 逐次系のみ。ホールド方式（薙刀式・新下駄）は不可");
+            } else {
+                lines.push("L3    keydown / keyup が揃い、キーも識別でき、押下時間も本物");
+                lines.push(`      （押下時間の中央値 ${hold ?? "?"}ms）`);
+                lines.push("      → 相互シフト（薙刀式）・同時打鍵（新下駄）まで載る");
+            }
         }
 
         lines.push("");
