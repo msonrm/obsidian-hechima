@@ -212,9 +212,11 @@ module.exports = class HechimaProbePlugin extends Plugin {
     // 初版はここを取り違えていた（数だけ数えて L3 と判定していた）。
     //
     //   1. keydown / keyup が届くか … 押下集合を作れるかの必要条件
-    //   2. **そのイベントがキーを識別できるか** … Android は印字キーを IME 経由で処理するため
-    //      keydown は来るのに code が空・key="Unidentified" になる（2026-07-29 実測）。
+    //   2. **そのイベントがキーを識別できるか** … 印字キーが OS の入力方式（IME）に食われる
+    //      環境では、keydown は来るのに code が空・key="Unidentified" になる。
     //      押下集合が作れても「どのキーか」が無ければ逐次系すら組めない = L2 未満
+    //      （2026-07-29 実測: ChromeOS 上の Android アプリ + 物理キーボード。
+    //       Android 実機 + Bluetooth キーボードは未実測 — 一般化しないこと）
     //   3. preventDefault で文字入力を抑止できるか … できないと IME を載せられない
     //   4. beforeinput で拾えるか … 2 が駄目でも、文字列として横取りできれば L1 = 逐次系
     //      （ローマ字・月配列・AZIK）までは載る。救済経路があるかを同時に測る
@@ -294,8 +296,8 @@ module.exports = class HechimaProbePlugin extends Plugin {
      * keydown〜keyup の保持時間（ms）を集める。`anonymous` で無名キーだけ / 識別キーだけを選ぶ。
      *
      * これが判定の核心になる。人間の打鍵は 50〜150ms なので、**保持時間が一桁 ms しか出ない
-     * 場合、そのイベントは実際の押下ではなく確定時点の合成**とみなせる（Android 実測: 無名 2ms /
-     * 実キー 95ms）。保持時間が無ければ、ホールドを意味に使う方式 — 薙刀式の相互シフト、
+     * 場合、そのイベントは実際の押下ではなく確定時点の合成**とみなせる（実測: 無名 2ms /
+     * 実キー 95ms。ChromeOS 上の Android アプリ）。保持時間が無ければ、ホールドを意味に使う方式 — 薙刀式の相互シフト、
      * 新下駄の同時打鍵、SandS — は近似ではなく原理的に組めない。
      */
     holdDurations(anonymous) {
@@ -321,6 +323,30 @@ module.exports = class HechimaProbePlugin extends Plugin {
         return out;
     }
 
+    /**
+     * 押下の重なりを調べる。返り値 = { maxHeld, nested } 。
+     *
+     * ホールド方式の可否を決めるのは、実は保持時間そのものより**重なりが見えるか**である。
+     * 「A を押したまま S を打つ」が「A を離してから S を打つ」と区別できて初めて、
+     * 相互シフト（薙刀式）や同時打鍵（新下駄）が成立する。
+     * nested = 誰かを押している最中に別のキーの keydown が来た回数。
+     */
+    keyOverlap() {
+        const held = new Set();
+        let maxHeld = 0;
+        let nested = 0;
+        for (const k of this.keyLog) {
+            if (k.type === "down") {
+                if (held.size > 0 && !held.has(k.code)) nested += 1;
+                held.add(k.code);
+                maxHeld = Math.max(maxHeld, held.size);
+            } else if (k.type === "up") {
+                held.delete(k.code);
+            }
+        }
+        return { maxHeld, nested };
+    }
+
     static median(xs) {
         if (!xs.length) return null;
         const s = [...xs].sort((a, b) => a - b);
@@ -334,7 +360,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
         const inputs = this.keyLog.filter((k) => k.type === "input");
         const composing = this.keyLog.filter((k) => k.composing);
 
-        // 「どのキーか」が載っているか。Android は印字キーを IME 経由で処理するため
+        // 「どのキーか」が載っているか。印字キーが OS の入力方式に食われる環境では
         // keydown は来るのに code が空・key="Unidentified" になる。修飾キーだけは識別できるので、
         // 件数ではなく**識別できた割合**を見ないと取り違える。
         const identified = downs.filter((k) => k.code && k.key && k.key !== "Unidentified");
@@ -357,13 +383,15 @@ module.exports = class HechimaProbePlugin extends Plugin {
             return m === null ? "—" : `${m}ms（${xs.length} 件）`;
         };
         lines.push(`保持時間    識別キー ${med(namedHold)} / 無名キー ${med(anonHold)}`);
+        const overlap = this.keyOverlap();
+        lines.push(`押下の重なり 同時に最大 ${overlap.maxHeld} キー / 入れ子 ${overlap.nested} 回`);
 
         lines.push("");
         lines.push("== 判定 ==");
         if (!downs.length && !inputs.length) {
             lines.push("FAIL  何も届かない — エディタにフォーカスして打鍵したか確認");
         } else if (anonymous > 0) {
-            // 無名が 1 件でもあれば物理キーとしては駄目。修飾キーだけ識別できる環境（Android）が
+            // 無名が 1 件でもあれば物理キーとしては駄目。修飾キーだけは識別できる環境が
             // あるので、「識別できたものが 0 件か」で分岐すると取り逃がす。
             const synthetic = anonHold.length && (HechimaProbePlugin.median(anonHold) ?? 99) < 10;
             lines.push(`物理キー不可  ${anonymous} 件が無名（code 空 / Unidentified）`);
@@ -401,9 +429,14 @@ module.exports = class HechimaProbePlugin extends Plugin {
                 lines.push("L2 相当  keydown / keyup は揃いキーも識別できるが、");
                 lines.push(`         押下時間の中央値が ${hold}ms = 合成イベントの疑い`);
                 lines.push("         → 逐次系のみ。ホールド方式（薙刀式・新下駄）は不可");
+            } else if (overlap.nested === 0) {
+                lines.push("L3?   識別も押下時間も本物だが、押下の重なりを観測していない");
+                lines.push(`      （押下時間の中央値 ${hold}ms）`);
+                lines.push("      → **あるキーを押したまま別のキーを打って測り直すこと**。");
+                lines.push("        重なりが見えて初めて相互シフト・同時打鍵の可否が決まる");
             } else {
-                lines.push("L3    keydown / keyup が揃い、キーも識別でき、押下時間も本物");
-                lines.push(`      （押下時間の中央値 ${hold ?? "?"}ms）`);
+                lines.push("L3    識別・押下時間・押下の重なり がすべて成立");
+                lines.push(`      （押下時間の中央値 ${hold}ms / 同時最大 ${overlap.maxHeld} キー）`);
                 lines.push("      → 相互シフト（薙刀式）・同時打鍵（新下駄）まで載る");
             }
         }
