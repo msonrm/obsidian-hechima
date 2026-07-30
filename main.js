@@ -3574,6 +3574,9 @@ const BENIGN_STDERR = [
     /config1\.db is not found/,
 ];
 
+/** バイト数を MB 表記にする（engine と probe の両方が使う） */
+const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
 /** 学習の永続化対象。辞書（18.9MB）と違い数十 KB なので vault に置いてよい */
 const PERSIST_FILES = ["segment.db", "boundary.db", "user_dictionary.db"];
 
@@ -3608,7 +3611,7 @@ class HechimaEngine {
                     tried.push(`${path}: サイズが不正 (${buf?.byteLength ?? 0} bytes)`);
                     continue;
                 }
-                onNote?.(`${(buf.byteLength / 1048576).toFixed(1)} MB — ${path}`);
+                onNote?.(`${mb(buf.byteLength)} — ${path}`);
                 return buf;
             } catch (e) {
                 tried.push(`${path}: ${String(e?.message ?? e)}`);
@@ -3832,6 +3835,280 @@ class HechimaEngine {
 }
 
 
+// ==== src/view.js ====
+// 表示層 — 未確定文字列と変換候補を CodeMirror 6 の上に描く。
+//
+// **未確定を文書に入れない。** Obsidian は自動保存するので、実テキストとして挿入すると
+// 打ちかけのかなが .md に書き込まれ、Undo 履歴も汚れる。キャレット位置に幅ゼロの
+// `Decoration.widget` を置き、その中に描く（`docs/obsidian-plugin-plan.md` §1.1）。
+//
+// 候補は `showTooltip` に任せる。文書位置へのアンカーと画面端での反転が向こう持ちになるので、
+// /tategaki/ で苦労した近接アンカーを作り直さずに済む。
+//
+// 配色は Obsidian の CSS 変数だけで組む。テーマを切り替えると候補窓も一緒に着替える。
+
+"use strict";
+
+/** 候補窓に一度に並べる件数（標準 IME と同じく 1-9 で直接選べる範囲） */
+const CAND_WINDOW = 9;
+
+const IME_STYLES = `
+/* 下線は**文節の span だけ**が描く。ラッパーにも引くと 2 本重なって見える */
+.hechima-composing { white-space: pre; }
+.hechima-seg-yomi { border-bottom: 2px dashed var(--text-muted); }
+.hechima-seg-focus {
+  background: var(--text-selection);
+  border-bottom: 2px solid var(--interactive-accent);
+}
+.hechima-seg-other { border-bottom: 1px solid var(--text-faint); }
+.hechima-cands {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0,0,0,.15));
+  font-size: var(--font-text-size, 16px);
+  /* 本文フォントが大きいと 9 行 + 追加候補 + フッタで 40vh を超え、
+     候補窓にスクロールバーが出る（標準 IME には無い見た目）。余裕を持たせる */
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+.hechima-cand {
+  display: flex;
+  /* サイズの違う番号と本文を並べるので、**ベースラインで揃える**。
+     既定の stretch だと小さい方（番号・注釈）が行の上端に張り付く */
+  align-items: baseline;
+  gap: .6em;
+  padding: 1px 8px;
+  color: var(--text-normal);
+  white-space: nowrap;
+}
+/* **ホストのフォントは候補の本文だけ**に効かせる。番号・注釈・フッタまで巻き込むと、
+   見出しの中で変換したときに桁や件数まで巨大化して枠から溢れる（実機で発生）。
+   これらは Obsidian の UI フォント + rem 固定にして、本文の字送りから独立させる。 */
+.hechima-cand-body {
+  font-family: var(--hechima-font-family, inherit);
+  font-size: var(--hechima-font-size, inherit);
+  font-weight: var(--hechima-font-weight, inherit);
+  font-style: var(--hechima-font-style, inherit);
+}
+.hechima-cand-num, .hechima-cand-ann, .hechima-cand-foot {
+  font-family: var(--font-interface, sans-serif);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.4;
+}
+.hechima-cand-num { color: var(--text-faint); min-width: 1em; text-align: right; font-size: .75rem; }
+.hechima-cand-sel { background: var(--interactive-accent); color: var(--text-on-accent); }
+.hechima-cand-sel .hechima-cand-num { color: var(--text-on-accent); opacity: .7; }
+.hechima-cand-annot { color: var(--text-muted); margin-left: auto; padding-left: 1em; }
+.hechima-cand-ann { color: var(--text-muted); min-width: 4.5em; font-size: .75rem; }
+.hechima-cand-divider {
+  border-top: 1px solid var(--background-modifier-border);
+  margin: 2px 0;
+}
+.hechima-cand-foot {
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: .75rem;
+  padding: 2px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+`;
+
+/** スタイルは JS から注入する（styles.css を別ファイルで配らずに済む） */
+function injectStyles() {
+    const id = "hechima-ime-styles";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = IME_STYLES;
+    document.head.appendChild(el);
+}
+
+/**
+ * CM6 の拡張を組み立てる。`cmView` / `cmState` が取れない環境では null を返し、
+ * 呼び元は Notice にフォールバックする。
+ */
+function createImeView() {
+    if (!cmView || !cmState) return null;
+    const { EditorView, Decoration, WidgetType, showTooltip } = cmView;
+    const { StateField, StateEffect } = cmState;
+
+    /** 未確定文字列を描くウィジェット。実テキストではないので文書は無変更 */
+    class ComposingWidget extends WidgetType {
+        constructor(segments) {
+            super();
+            this.segments = segments;
+        }
+
+        eq(other) {
+            return (
+                this.segments.length === other.segments.length &&
+                this.segments.every((s, i) => s.text === other.segments[i].text && s.kind === other.segments[i].kind)
+            );
+        }
+
+        toDOM() {
+            const wrap = document.createElement("span");
+            wrap.className = "hechima-composing";
+            for (const seg of this.segments) {
+                const el = document.createElement("span");
+                el.className = `hechima-seg-${seg.kind}`;
+                el.textContent = seg.text;
+                wrap.appendChild(el);
+            }
+            return wrap;
+        }
+
+        ignoreEvent() {
+            return true; // ウィジェット上のイベントはエディタに渡さない
+        }
+    }
+
+    /**
+     * キャレット位置の文字属性を候補窓に写す。見出しの中や太字の途中で変換したとき、
+     * 候補が本文と同じ見た目で並ぶ（Chrome 拡張でやった「変換の WYSIWYG 化」と同じ狙い）。
+     */
+    function applyHostFont(dom, view, pos) {
+        try {
+            const at = view.domAtPos(pos);
+            const el = at?.node?.nodeType === 3 ? at.node.parentElement : at?.node;
+            if (!el || !el.nodeType) return;
+            const cs = getComputedStyle(el);
+            // 変数で渡し、CSS 側で**候補の本文だけ**に適用する。
+            // lineHeight は写さない —— 見出し等の大きな行送りが窓全体の縦幅を暴らせる
+            for (const [prop, name] of [
+                ["fontFamily", "family"], ["fontSize", "size"],
+                ["fontWeight", "weight"], ["fontStyle", "style"],
+            ]) {
+                if (cs[prop]) dom.style.setProperty(`--hechima-font-${name}`, cs[prop]);
+            }
+        } catch {
+            // 位置が取れない場面（描画直後等）は既定の見た目でよい
+        }
+    }
+
+    /**
+     * 候補窓。**ページ送り**で見せる（標準 IME と同じ）。
+     * 中央スクロールにすると選択位置が窓の途中で固定され、番号と候補の対応が崩れる。
+     */
+    function candidateTooltip(state) {
+        const focus = state.segments.find((s) => s.kind === "focus");
+        const cands = focus?.candidates;
+        const idxRaw = focus?.candidateIndex ?? 0;
+        const inAdditional = focus?.additionalIndex !== undefined;
+        const page = Math.floor(idxRaw / CAND_WINDOW);
+        // 追加候補（↑ で段階展開されるひらがな/カタカナ等）は **1 ページ目でだけ**見せる。
+        // 2 ページ目以降からは ↑ でそのページ内を遡るだけで到達できないので、
+        // 出しておくと「選べそうなのに選べない」誤解になる（実機の指摘）。
+        const additional = inAdditional || page === 0 ? focus?.additional ?? [] : [];
+        if (!cands || (cands.length < 2 && !additional.length)) return null;
+        const idx = idxRaw;
+        const start = page * CAND_WINDOW;
+        const shown = cands.slice(start, start + CAND_WINDOW);
+        const pages = Math.ceil(cands.length / CAND_WINDOW);
+
+        return {
+            pos: state.pos,
+            above: false,
+            strictSide: false,
+            arrow: false,
+            create: (view) => {
+                const dom = document.createElement("div");
+                dom.className = "hechima-cands";
+                applyHostFont(dom, view, state.pos);
+
+                // 追加候補は通常候補の**上**に注釈付きで並べる（KeyLogicKit / ラボと同配置）
+                additional.forEach((a, i) => {
+                    const row = document.createElement("div");
+                    row.className =
+                        "hechima-cand" + (inAdditional && i === focus.additionalIndex ? " hechima-cand-sel" : "");
+                    const ann = document.createElement("span");
+                    ann.className = "hechima-cand-ann";
+                    ann.textContent = a.annotation;
+                    const body = document.createElement("span");
+                    body.className = "hechima-cand-body";
+                    body.textContent = a.text;
+                    row.append(ann, body);
+                    dom.appendChild(row);
+                });
+                if (additional.length) {
+                    const div = document.createElement("div");
+                    div.className = "hechima-cand-divider";
+                    dom.appendChild(div);
+                }
+
+                shown.forEach((text, i) => {
+                    const abs = start + i;
+                    const row = document.createElement("div");
+                    row.className =
+                        "hechima-cand" + (!inAdditional && abs === idx ? " hechima-cand-sel" : "");
+                    const num = document.createElement("span");
+                    num.className = "hechima-cand-num";
+                    num.textContent = String(i + 1);
+                    const body = document.createElement("span");
+                    body.className = "hechima-cand-body";
+                    body.textContent = text;
+                    row.append(num, body);
+                    dom.appendChild(row);
+                });
+
+                // 全体の位置とページ（標準 IME が出しているもの）
+                const foot = document.createElement("div");
+                foot.className = "hechima-cand-foot";
+                foot.textContent = inAdditional
+                    ? `追加候補 ${focus.additionalIndex + 1}/${additional.length}`
+                    : `${idx + 1}/${cands.length}` + (pages > 1 ? `  (${page + 1}/${pages} ページ)` : "");
+                dom.appendChild(foot);
+
+                return { dom };
+            },
+        };
+    }
+
+    const setIme = StateEffect.define();
+
+    const imeField = StateField.define({
+        create: () => null,
+        update(value, tr) {
+            for (const e of tr.effects) if (e.is(setIme)) return e.value;
+            if (!value) return value;
+            // 文書が変わったら位置を追従させる（確定で本文が伸びる等）
+            return tr.docChanged ? { ...value, pos: tr.changes.mapPos(value.pos, 1) } : value;
+        },
+        provide: (f) => [
+            EditorView.decorations.from(f, (v) =>
+                v && v.segments.length
+                    ? Decoration.set([
+                          Decoration.widget({ widget: new ComposingWidget(v.segments), side: 1 }).range(v.pos),
+                      ])
+                    : Decoration.none
+            ),
+            showTooltip.from(f, (v) => (v ? candidateTooltip(v) : null)),
+        ],
+    });
+
+    return {
+        extension: imeField,
+        /** 未確定を描き替える。segments が空なら消す */
+        render(view, segments) {
+            if (!view) return;
+            const value = segments && segments.length
+                ? { segments, pos: view.state.selection.main.head }
+                : null;
+            view.dispatch({ effects: setIme.of(value) });
+        },
+        /** 候補窓が出ているか（数字キーの直接選択を先取りするかの判定に使う） */
+        hasCandidates(view) {
+            const v = view?.state.field(imeField, false);
+            return !!v?.segments?.some((s) => s.kind === "focus" && s.candidates?.length);
+        },
+    };
+}
+
+
 // ==== src/ime.js ====
 // 入力層 — 打鍵を配列エンジンに通し、変換セッションへ流す。
 //
@@ -3864,6 +4141,22 @@ const REPEAT_PASS_CODES = new Set([
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
     "Backspace", "Delete", "Home", "End", "PageUp", "PageDown",
 ]);
+
+/**
+ * KeyboardEvent から `KeyTap`（KeyboardEvent 互換の最小形）を作る。
+ * `repeat` を明示的に指定できるのが要点で、リピートを 1 打として渡し直すのに使う。
+ */
+function tapOf(e, repeat) {
+    return {
+        code: e.code,
+        key: e.key,
+        repeat,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+    };
+}
 
 /** `cb.hostKey` で来る編集キーを Obsidian の Editor 操作に落とす */
 function applyHostKey(editor, name) {
@@ -3906,8 +4199,9 @@ class HechimaIME {
         this.keymapId = DEFAULT_KEYMAP;
         this.active = false;
         this.booting = null;
-        this.composingNotice = null;
-        this.composing = ""; // 未確定文字列（Notice の有無に頼らない）
+        this.composingNotice = null; // CM6 が取れない環境のフォールバック
+        this.composing = ""; // 未確定文字列
+        this.view = createImeView(); // CM6 の表示層（null = フォールバック）
         this.onStatus = null; // ステータスバー更新のフック
     }
 
@@ -3950,6 +4244,14 @@ class HechimaIME {
         return this.plugin.app.workspace.activeEditor?.editor ?? null;
     }
 
+    /**
+     * 生の EditorView。Obsidian は Editor に `cm` として持たせている（公式 API ではないが
+     * 実質の標準経路）。取れなければ表示は Notice にフォールバックする。
+     */
+    cmView() {
+        return this.editor()?.cm ?? null;
+    }
+
     /** wasm とセッションを起動する（多重起動しない） */
     boot() {
         if (this.fep) return Promise.resolve(this.fep);
@@ -3960,7 +4262,12 @@ class HechimaIME {
                 ...this.engine.callbacks(),
                 show: (segments) => this.show(segments),
                 hide: () => this.hide(),
-                commit: (text) => this.editor()?.replaceSelection(text),
+                // **確定したら表示を消すのはホストの責務**（cb 契約。hechima は hide を呼ばない）。
+                // 消し忘れると未確定表示が確定後も残る。
+                commit: (text) => {
+                    this.editor()?.replaceSelection(text);
+                    this.hide();
+                },
                 hostKey: (name) => applyHostKey(this.editor(), name),
                 retract: (text) => this.retract(text),
             });
@@ -3971,16 +4278,28 @@ class HechimaIME {
         return this.booting;
     }
 
-    /** Phase 2 の未確定表示は Notice のまま。Decoration にするのは Phase 3 */
+    /**
+     * 未確定と候補を描く。**文書には何も書かない**（Decoration.widget + showTooltip）。
+     * CM6 が取れない環境だけ Notice に落ちる。
+     */
     show(segments) {
-        const text = segments.map((s) => s.text).join("");
-        this.composing = text;
+        this.composing = segments.map((s) => s.text).join("");
+        this.lastSegments = segments;
+        if (this.view) {
+            this.view.render(this.cmView(), segments);
+            return;
+        }
         this.composingNotice?.hide();
-        this.composingNotice = text ? new Notice(`▽ ${text}`, 0) : null;
+        this.composingNotice = this.composing ? new Notice(`▽ ${this.composing}`, 0) : null;
     }
 
     hide() {
         this.composing = "";
+        this.lastSegments = null;
+        if (this.view) {
+            this.view.render(this.cmView(), null);
+            return;
+        }
         this.composingNotice?.hide();
         this.composingNotice = null;
     }
@@ -4046,15 +4365,48 @@ class HechimaIME {
             // エンジンが解決を待っていて未確定表示がまだ無いため、素通しした文字が本文に漏れる
             // （実測: 薙刀式で N を保持すると "nnnnnnnn" が入り、F を足して初めて「だ」になる）。
             //
-            // 移動・削除系は**セッションに渡さずそのまま素通しする**。渡すとセッションが
-            // 取り込んでしまい（非リピートでは取り込まないのに、リピートだと取り込む）、
-            // preventDefault でカーソルが動かなくなる（実測）。既定動作に任せるのが正しい。
-            if (REPEAT_PASS_CODES.has(e.code)) return false;
+            // 移動・削除系のリピート:
+            //   合成中 → **セッションのもの**（候補送り・よみの末尾削除）。素通しすると
+            //     キャレットが動いて未確定表示の位置がずれ、入力位置ごと崩れる（実機で発生）
+            //   非合成 → 既定動作に任せる。渡すとセッションが取り込んでしまい
+            //     （非リピートでは取り込まないのに、リピートだと取り込む）カーソルが動かない
+            if (REPEAT_PASS_CODES.has(e.code)) {
+                if (!this.isComposing()) return false;
+                // **repeat を落として渡す。** セッション（と配列エンジン）はリピートを
+                // 「新しい押下ではない」として無視するので、そのまま渡すと候補窓の中で
+                // ↑↓ の押しっぱなしが効かない。ホスト側で 1 打として作り直す。
+                const taken = this.fep.feed(tapOf(e, false));
+                e.preventDefault(); // 合成中は既定動作に落とさない（キャレットが動く）
+                return true;
+            }
+            e.preventDefault();
+            return true;
+        }
+
+        // 候補窓が出ている間の 1-9 = 窓内の直接選択（標準 IME の作法）。
+        // セッションの routing には触れず、ホストの方針としてここで先取りする。
+        if (
+            /^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey &&
+            this.view?.hasCandidates(this.cmView()) && this.selectInWindow(Number(e.key))
+        ) {
             e.preventDefault();
             return true;
         }
 
         return this.feedOrPass(e);
+    }
+
+    /**
+     * 候補窓の n 番目（1 起点）を選ぶ。**起点は表示側と同じページ送りの式**で求める
+     * （ここがずれると番号と候補の対応が壊れる）。
+     */
+    selectInWindow(n) {
+        const focus = this.lastSegments?.find((s) => s.kind === "focus");
+        const cands = focus?.candidates;
+        if (!cands?.length) return false;
+        const idx = focus.candidateIndex ?? 0;
+        const target = Math.floor(idx / 9) * 9 + (n - 1);
+        return target < cands.length && this.fep.selectCandidate(target);
     }
 
     feedOrPass(e) {
@@ -4276,6 +4628,12 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
         this.registerKeyProbe();
         this.registerImeKeys();
+
+        // 表示層（未確定の Decoration + 候補の showTooltip）
+        if (this.ime.view) {
+            injectStyles();
+            this.registerEditorExtension(this.ime.view.extension);
+        }
     }
 
     renderStatus() {
