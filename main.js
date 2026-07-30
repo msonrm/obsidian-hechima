@@ -4318,8 +4318,18 @@ function createImeView() {
 
 "use strict";
 
-/** 既定の配列。標準的な IME に一番近いところから始める */
-const DEFAULT_KEYMAP = "romaji_jis";
+/**
+ * 既定の配列 = **内蔵ローマ字**（hechima のセッション層が持つ合成。`setEngine(null)`）。
+ *
+ * ラボと QuuBee の既定と同じ構成。JSON の romaji_* は KeymapEngine を通る別物で、
+ * 内蔵だけが持つ機能が 2 つある（2026-07-30 実測）:
+ *   - 句読点の即時確定（, . → 、。 を直接コミット）
+ *   - BS でよみを消して素のローマ字（pending）まで戻ったときの合成復帰
+ *     （「dか」→ BS →「d」+ a →「だ」。hechima v0.13.1）
+ * 標準的な IME を名乗る以上、既定はこちら。JSON のローマ字は「配列を試す」用として残す。
+ */
+const BUILTIN_ROMAJI = "builtin_romaji";
+const DEFAULT_KEYMAP = BUILTIN_ROMAJI;
 
 /** vault 側の配列を置く場所。ドットフォルダではないので Files アプリからも触れる */
 const VAULT_KEYMAP_DIR = "hechima/keymaps";
@@ -4415,6 +4425,12 @@ class HechimaIME {
      */
     catalog() {
         const out = new Map();
+        out.set(BUILTIN_ROMAJI, {
+            id: BUILTIN_ROMAJI,
+            name: "ローマ字（内蔵・標準）",
+            behavior: "sequential",
+            origin: "内蔵",
+        });
         for (const [id, json] of Object.entries(BUNDLED_KEYMAPS)) {
             out.set(id, { id, name: json.name ?? id, behavior: json.behavior?.type ?? "?", origin: "同梱" });
         }
@@ -4466,10 +4482,17 @@ class HechimaIME {
 
     /** 配列を差し替える。合成中なら KeymapEngine 側が確定してから切り替える */
     setKeymap(id) {
+        if (id === BUILTIN_ROMAJI) {
+            // 内蔵ローマ字 = エンジンを挿さない。かな合成はセッション層が行う
+            this.keymapId = id;
+            this.keyEngine = null;
+            this.fep?.setEngine(null);
+            this.onStatus?.();
+            return;
+        }
         const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         const expanded = KeymapEngine.decodeKeymap(json);
-        this.keymapId = id;
         if (this.keyEngine) {
             this.keyEngine.setKeymap(expanded);
         } else {
@@ -4477,11 +4500,13 @@ class HechimaIME {
             // タイマー駆動の chord 確定を拾う。配線はホスト側の責務
             this.keyEngine.onStateChange = () => this.fep?.pumpEngine();
         }
+        this.keymapId = id;
         this.fep?.setEngine(this.keyEngine, (tap) => KeymapEngine.keyEventFromBrowser(tap));
         this.onStatus?.();
     }
 
     keymapName() {
+        if (this.keymapId === BUILTIN_ROMAJI) return "ローマ字（内蔵）";
         return this.keymapJson(this.keymapId)?.name ?? this.keymapId;
     }
 
@@ -4806,7 +4831,11 @@ class ReportModal extends Modal {
 
 module.exports = class HechimaProbePlugin extends Plugin {
     async onload() {
-        this.settings = Object.assign({ keymapId: "romaji_jis" }, await this.loadData());
+        this.settings = Object.assign({ keymapId: "builtin_romaji" }, await this.loadData());
+        // 0.3.0 までの既定は romaji_jis（JSON）だった。内蔵ローマ字にしか無い機能
+        // （句読点の即時確定・BS 後の pending 復帰）があるため、旧既定のままの設定は
+        // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
+        if (this.settings.keymapId === "romaji_jis") this.settings.keymapId = "builtin_romaji";
         this.engine = new HechimaEngine(this.app, this.manifest);
         // 初回だけ辞書のダウンロードで数十秒かかる。黙って止まったように見えないようにする
         this.engine.onProgress = (msg) => {
