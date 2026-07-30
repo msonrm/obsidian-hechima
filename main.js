@@ -4651,7 +4651,16 @@ class HechimaIME {
      */
     handleKeyDown(e) {
         if (MODE_ON_CODES.has(e.code)) {
-            void this.setActive(true);
+            // JIS の変換キー: **選択があれば再変換、なければ IME ON**（標準 IME / ラボの作法）。
+            // 再変換は keymap JSON の語彙ではない — 操作対象が確定済みテキスト = ホストの
+            // 文書なので、keymap の管轄（キー入力→かな解決）の外にあり、ホストの方針で拾う
+            // （ラボも app.ts の keydown 直接処理。keymap-v2-sketch §3.5 の文書所有権の境界）。
+            const sel = this.editor()?.getSelection?.() ?? "";
+            if (e.code === "Convert" && sel && !this.isComposing()) {
+                void this.reconvertSelection();
+            } else {
+                void this.setActive(true);
+            }
             e.preventDefault();
             return true;
         }
