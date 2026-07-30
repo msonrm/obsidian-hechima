@@ -2371,7 +2371,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.16.0";
+	const HECHIMA_VERSION = "0.17.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3077,6 +3077,14 @@ var Hechima = (function () {
 			"ArrowDown"
 		]);
 		function engineDown(tap) {
+			if (!engine.isChord && tap.shiftKey && !tap.ctrlKey && !tap.altKey && !tap.metaKey && /^[a-zA-Z]$/.test(tap.key) && !engine.getState().isComposing && !composing()) {
+				kana = tap.key;
+				pend = "";
+				eiji = true;
+				genId++;
+				render();
+				return true;
+			}
 			if (!engine) return false;
 			if (segs) {
 				if (tap.key === "Shift" || tap.key === "Control" || tap.key === "Alt" || tap.key === "Meta") return true;
@@ -4729,7 +4737,8 @@ class HechimaIME {
         this.onStatus?.();
         // モバイルにはステータスバーが無いので、キャレット位置に短時間のバッジを出す。
         // Notice の常時表示は邪魔（実機の指摘）— 切り替えた瞬間だけ、その場で分かればよい
-        this.view?.flashMode(this.cmView(), on ? `あ ${this.keymapName()}` : "A 直接入力");
+        // 文言は配列名 / 「直接入力」のみ（「あ」「A」のプレフィックスは冗長 — 実機の指摘）
+        this.view?.flashMode(this.cmView(), on ? this.keymapName() : "直接入力");
     }
 
     async toggle() {
