@@ -4103,10 +4103,22 @@ const IME_STYLES = `
   border-top: 1px solid var(--background-modifier-border);
   color: var(--text-faint);
   font-size: .75rem;
-  padding: 2px 8px;
-  text-align: right;
+  padding: 3px 8px;
+  text-align: left;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  min-height: 1em;
 }
+.hechima-cand-dots { display: inline-flex; gap: 4px; align-items: center; }
+.hechima-cand-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  opacity: .55;
+}
+.hechima-cand-dot.on { background: var(--text-muted); opacity: 1; }
 `;
 
 /**
@@ -4218,6 +4230,29 @@ function createImeView() {
     }
 
     /**
+     * ページ位置の点列（ラボの candlayer 一層目と同じ語彙）。
+     * 全体のページ数と現在地を、**数えずに掴める**ようにするためのもの。
+     * 数字（idx/total + ページ）はやり過ぎだった —— 候補数が分かればページ数は要らないし、
+     * ページ数があれば総数は重要でない（実機の指摘）。点が多すぎて数えられない領域
+     * （8 ページ超）では素直に数字へ倒す。二層化（Phase 8）でも同じ語彙を使う。
+     */
+    function pageDots(pages, page) {
+        if (pages > 8) {
+            const n = document.createElement("span");
+            n.textContent = `${page + 1}/${pages}`;
+            return n;
+        }
+        const dots = document.createElement("span");
+        dots.className = "hechima-cand-dots";
+        for (let i = 0; i < pages; i++) {
+            const d = document.createElement("span");
+            d.className = "hechima-cand-dot" + (i === page ? " on" : "");
+            dots.appendChild(d);
+        }
+        return dots;
+    }
+
+    /**
      * 候補窓。**ページ送り**で見せる（標準 IME と同じ）。
      * 中央スクロールにすると選択位置が窓の途中で固定され、番号と候補の対応が崩れる。
      */
@@ -4282,13 +4317,13 @@ function createImeView() {
                     dom.appendChild(row);
                 });
 
-                // 全体の位置とページ（標準 IME が出しているもの）
-                const foot = document.createElement("div");
-                foot.className = "hechima-cand-foot";
-                foot.textContent = inAdditional
-                    ? `追加候補 ${focus.additionalIndex + 1}/${additional.length}`
-                    : `${idx + 1}/${cands.length}` + (pages > 1 ? `  (${page + 1}/${pages} ページ)` : "");
-                dom.appendChild(foot);
+                // ページ位置の点列。1 ページに収まるならフッタごと出さない（情報ゼロなので）
+                if (pages > 1 && !inAdditional) {
+                    const foot = document.createElement("div");
+                    foot.className = "hechima-cand-foot";
+                    foot.appendChild(pageDots(pages, page));
+                    dom.appendChild(foot);
+                }
 
                 // 注目文節の左端にそろえる（文節移動で候補窓も動く）
                 return { dom, offset: { x: focusOffsetX(view, state.segments), y: 0 } };
