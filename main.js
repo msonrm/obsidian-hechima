@@ -4585,6 +4585,7 @@ class HechimaIME {
         this.composingNotice = null; // CM6 が取れない環境のフォールバック
         this.composing = ""; // 未確定文字列
         this.bsGuardUntil = 0; // BS で合成を消し切った直後の吸収窓の期限
+        this.chordCodes = new Set(); // 現在の配列が chord の役として宣言している物理キー
         this.view = createImeView(); // CM6 の表示層（null = フォールバック）
         this.onStatus = null; // ステータスバー更新のフック
     }
@@ -4654,6 +4655,7 @@ class HechimaIME {
 
     /** 配列を差し替える。合成中なら KeymapEngine 側が確定してから切り替える */
     setKeymap(id) {
+        this.chordCodes = new Set(); // この配列が chord の役として宣言している物理キー
         if (id === BUILTIN_ROMAJI) {
             // 内蔵ローマ字 = エンジンを挿さない。かな合成はセッション層が行う
             this.keymapId = id;
@@ -4665,6 +4667,14 @@ class HechimaIME {
         const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         const expanded = KeymapEngine.decodeKeymap(json);
+        // chord 配列の hidToKey に載っている物理キーは**配列の領分**。ホストのモード切替
+        // （変換=IME ON 等）より優先してエンジンへ流す。NICOLA JIS の親指シフト
+        // （無変換/変換）がホストのモード切替に食われて効かなかった事故の対策。
+        const hidToKey = json.behavior?.config?.hidToKey ?? {};
+        for (const name of Object.keys(hidToKey)) {
+            const code = KeymapEngine.hidNameToBrowserCode?.(name);
+            if (code) this.chordCodes.add(code);
+        }
         if (this.keyEngine) {
             this.keyEngine.setKeymap(expanded);
         } else {
@@ -4797,6 +4807,14 @@ class HechimaIME {
      * 誤解されて相互シフトの「押している間」が壊れる。
      */
     handleKeyDown(e) {
+        // IME ON 中、現在の配列がこのキーを chord の役（NICOLA の親指シフト等）として
+        // 宣言していれば、モード切替ではなく配列に渡す
+        if (
+            this.active && this.fep && this.chordCodes?.has(e.code) &&
+            (MODE_ON_CODES.has(e.code) || MODE_OFF_CODES.has(e.code))
+        ) {
+            return this.feedOrPass(e);
+        }
         if (MODE_ON_CODES.has(e.code)) {
             // JIS の変換キー: **選択があれば再変換、なければ IME ON**（標準 IME / ラボの作法）。
             // 再変換は keymap JSON の語彙ではない — 操作対象が確定済みテキスト = ホストの
