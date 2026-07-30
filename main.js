@@ -4371,7 +4371,7 @@ function createImeView() {
                 v
                     ? {
                           pos: v.pos,
-                          above: true,
+                          above: false, // キャレットの下（上だと行に被って違和感 — 実機の指摘）
                           strictSide: false,
                           arrow: false,
                           create: () => {
