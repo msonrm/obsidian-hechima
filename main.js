@@ -3525,6 +3525,176 @@ var Hechima = (function () {
 const BUNDLED_KEYMAPS = {"azik_jis":{"formatVersion":"1.0","name":"AZIK(JIS)","author":"木村清","description":"AZIK 拡張ローマ字入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"}},"azik_us":{"formatVersion":"1.0","name":"AZIK(US)","author":"木村清","description":"AZIK 拡張ローマ字入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"}},"naginata_jis":{"formatVersion":"1.0","name":"薙刀式(JIS)","author":"大岡俊彦","description":"薙刀式v18同時打鍵入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"space"},"shiftKeys":[{"key":"space","singleTapAction":"convert"}],"judgment":"mutual","simultaneousWindow":0.08,"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","space+E":"り","space+R":"め","space+W":"ね","space+I":"よ","space+O":"え","space+P":"ゆ","space+U":"さ","space+A":"せ","space+D":"に","space+F":"ま","space+G":"ち","space+H":"や","space+J":"の","space+K":"も","space+L":"つ","space+S":"み","space+semicolon":"ふ","space+B":"ぬ","space+C":"を","space+N":"お","space+X":"ひ","space+Z":"ほ","space+comma":"む","space+dot":"わ","space+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","space+M":"insertAndConfirm:。","space+T":"editSegmentLeft","space+V":"insertAndConfirm:、","space+Y":"editSegmentRight"},"englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}}},"naginata_us":{"formatVersion":"1.0","name":"薙刀式(US)","author":"大岡俊彦","description":"薙刀式v18同時打鍵入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"space"},"shiftKeys":[{"key":"space","singleTapAction":"convert"}],"judgment":"mutual","simultaneousWindow":0.08,"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","space+E":"り","space+R":"め","space+W":"ね","space+I":"よ","space+O":"え","space+P":"ゆ","space+U":"さ","space+A":"せ","space+D":"に","space+F":"ま","space+G":"ち","space+H":"や","space+J":"の","space+K":"も","space+L":"つ","space+S":"み","space+semicolon":"ふ","space+B":"ぬ","space+C":"を","space+N":"お","space+X":"ひ","space+Z":"ほ","space+comma":"む","space+dot":"わ","space+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","space+M":"insertAndConfirm:。","space+T":"editSegmentLeft","space+V":"insertAndConfirm:、","space+Y":"editSegmentRight"},"englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}}},"nicola_jis":{"formatVersion":"1.0","name":"NICOLA(JIS)","author":"日本語入力コンソーシアム","description":"NICOLA 親指シフト入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","lang2":"leftThumb","lang1":"rightThumb","international5":"leftThumb","international4":"rightThumb"},"shiftKeys":[{"key":"leftThumb"},{"key":"rightThumb"}],"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","leftThumb+Q":"ぁ","leftThumb+W":"え","leftThumb+E":"り","leftThumb+R":"ゃ","leftThumb+T":"れ","leftThumb+Y":"ぱ","leftThumb+U":"ぢ","leftThumb+I":"ぐ","leftThumb+O":"づ","leftThumb+P":"ぴ","leftThumb+semicolon":"ー","leftThumb+A":"を","leftThumb+S":"あ","leftThumb+D":"な","leftThumb+F":"ゅ","leftThumb+G":"も","leftThumb+H":"ば","leftThumb+J":"ど","leftThumb+K":"ぎ","leftThumb+L":"ぽ","leftThumb+Z":"ぅ","leftThumb+X":"ー","leftThumb+C":"ろ","leftThumb+V":"や","leftThumb+B":"ぃ","leftThumb+N":"ぷ","leftThumb+M":"ぞ","leftThumb+comma":"ぺ","leftThumb+dot":"ぼ","leftThumb+slash":"ぉ","rightThumb+Q":"ぁ","rightThumb+W":"が","rightThumb+E":"だ","rightThumb+R":"ご","rightThumb+T":"ざ","rightThumb+Y":"よ","rightThumb+U":"に","rightThumb+I":"る","rightThumb+O":"ま","rightThumb+P":"ぇ","rightThumb+semicolon":"っ","rightThumb+A":"ゔ","rightThumb+S":"じ","rightThumb+D":"で","rightThumb+F":"げ","rightThumb+G":"ぜ","rightThumb+H":"み","rightThumb+J":"お","rightThumb+K":"の","rightThumb+L":"ょ","rightThumb+Z":"ぅ","rightThumb+X":"び","rightThumb+C":"ず","rightThumb+V":"ぶ","rightThumb+B":"べ","rightThumb+N":"ぬ","rightThumb+M":"ゆ","rightThumb+comma":"む","rightThumb+dot":"わ","rightThumb+slash":"ぉ"},"specialActions":{},"simultaneousWindow":0.1}}},"nicola_us":{"formatVersion":"1.0","name":"NICOLA(US)","author":"日本語入力コンソーシアム","description":"NICOLA 親指シフト入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"leftThumb","rightAlt":"rightThumb","international5":"leftThumb","international4":"rightThumb","lang2":"leftThumb","lang1":"rightThumb"},"shiftKeys":[{"key":"leftThumb","singleTapAction":"convert"},{"key":"rightThumb"}],"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","leftThumb+Q":"ぁ","leftThumb+W":"え","leftThumb+E":"り","leftThumb+R":"ゃ","leftThumb+T":"れ","leftThumb+Y":"ぱ","leftThumb+U":"ぢ","leftThumb+I":"ぐ","leftThumb+O":"づ","leftThumb+P":"ぴ","leftThumb+semicolon":"ー","leftThumb+A":"を","leftThumb+S":"あ","leftThumb+D":"な","leftThumb+F":"ゅ","leftThumb+G":"も","leftThumb+H":"ば","leftThumb+J":"ど","leftThumb+K":"ぎ","leftThumb+L":"ぽ","leftThumb+Z":"ぅ","leftThumb+X":"ー","leftThumb+C":"ろ","leftThumb+V":"や","leftThumb+B":"ぃ","leftThumb+N":"ぷ","leftThumb+M":"ぞ","leftThumb+comma":"ぺ","leftThumb+dot":"ぼ","leftThumb+slash":"ぉ","rightThumb+Q":"ぁ","rightThumb+W":"が","rightThumb+E":"だ","rightThumb+R":"ご","rightThumb+T":"ざ","rightThumb+Y":"よ","rightThumb+U":"に","rightThumb+I":"る","rightThumb+O":"ま","rightThumb+P":"ぇ","rightThumb+semicolon":"っ","rightThumb+A":"ゔ","rightThumb+S":"じ","rightThumb+D":"で","rightThumb+F":"げ","rightThumb+G":"ぜ","rightThumb+H":"み","rightThumb+J":"お","rightThumb+K":"の","rightThumb+L":"ょ","rightThumb+Z":"ぅ","rightThumb+X":"び","rightThumb+C":"ず","rightThumb+V":"ぶ","rightThumb+B":"べ","rightThumb+N":"ぬ","rightThumb+M":"ゆ","rightThumb+comma":"む","rightThumb+dot":"わ","rightThumb+slash":"ぉ"},"specialActions":{},"simultaneousWindow":0.1}}},"romaji_colemak_jis":{"formatVersion":"1.0","name":"ローマ字(Colemak JIS)","author":"Shai Coleman","license":"Unlicense","description":"Colemak 配列でのローマ字入力（JIS キーボード）。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","~":"〜"}},"keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"}},"romaji_colemak_us":{"formatVersion":"1.0","name":"ローマ字(Colemak US)","author":"Shai Coleman","license":"Unlicense","description":"Colemak 配列でのローマ字入力（US キーボード）。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜"}},"keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"}},"romaji_jis":{"formatVersion":"1.0","name":"ローマ字(QWERTY JIS)","description":"標準ローマ字入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential"},"inputBase":"romaji","modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode"}},"romaji_us":{"formatVersion":"1.0","name":"ローマ字(QWERTY US)","description":"標準ローマ字入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential"},"inputBase":"romaji","modeKeys":{"ctrl+space":"toggleInputMode"}},"tsuki2-263_jis":{"formatVersion":"1.0","name":"月配列2-263(JIS)","description":"月配列2-263 前置シフト方式（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","'":"＇","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":["d","k"],"inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）— JIS では US の [ → @、' → : に対応","a":"は","s":"か","@":"ち","f":"と","g":"た","h":"く","j":"う",":":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d@":"「","d:":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k@":"「","k:":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","@l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"}},"tsuki2-263_us":{"formatVersion":"1.0","name":"月配列2-263(US)","description":"月配列2-263 前置シフト方式（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":["d","k"],"inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"}}};
 
 
+// ==== src/assets.js ====
+// バイナリの入手 — wasm 本体と辞書をどこから読むか。
+//
+// 探す順:
+//   1. vault（プラグインフォルダ → `hechima/`）… 手で置いた場合。オフラインでも確実
+//   2. IndexedDB … 一度取得したもののキャッシュ
+//   3. 配布元からダウンロード → IndexedDB に保存
+//
+// **辞書 18.9MB を vault に置かない**のが要点。vault に置くと Obsidian Sync / iCloud が
+// 端末間で運び続けてしまう（学習データは数十 KB なので vault に置いてよい ——
+// あちらは運ばれることが利点になる）。
+//
+// 取得は Obsidian の `requestUrl` を使う。CORS を回避できるので配布元にヘッダ設定が要らない
+// （hechima の「特別なヘッダを配れないホストにも置ける」という前提を崩さない）。
+
+"use strict";
+
+/** 配布元。ラボが公開配信しているものと同一（md5 照合済み） */
+const ASSET_BASE = "https://luffa-lang-labo.dev/vendor/hechima-wasm";
+
+/**
+ * 取得するもの。辞書は**事前圧縮版**を取る（18.9MB → 12.8MB）。
+ * `gz` が付いているものは DecompressionStream で展開してから使う。
+ */
+const ASSETS = {
+    "hechima-wasm.wasm": { url: `${ASSET_BASE}/hechima-wasm.wasm`, gz: false, mb: 2.6 },
+    "mozc.data": { url: `${ASSET_BASE}/mozc.data.gz`, gz: true, mb: 12.8 },
+};
+
+const DB_NAME = "hechima";
+const DB_STORE = "assets";
+
+function openDb() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function idbGet(db, key) {
+    return new Promise((resolve, reject) => {
+        const req = db.transaction(DB_STORE, "readonly").objectStore(DB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function idbPut(db, key, value) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readwrite");
+        tx.objectStore(DB_STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function gunzip(buf) {
+    const src = new ReadableStream({
+        start(c) {
+            c.enqueue(new Uint8Array(buf));
+            c.close();
+        },
+    });
+    return new Response(src.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+}
+
+/** 辞書として妥当か。未配備パスに HTML を返すホスティング対策も兼ねる */
+function looksValid(buf) {
+    return buf && buf.byteLength > 1024 * 1024 && new Uint8Array(buf, 0, 1)[0] !== 0x3c;
+}
+
+class AssetStore {
+    constructor(app, manifest) {
+        this.app = app;
+        this.manifest = manifest;
+        this.db = null;
+    }
+
+    async idb() {
+        if (!this.db) this.db = await openDb();
+        return this.db;
+    }
+
+    /** vault に手で置かれていれば、それを最優先で使う（オフライン・上級者向け） */
+    async fromVault(name, note) {
+        const adapter = this.app.vault.adapter;
+        for (const path of [`${this.manifest.dir}/${name}`, `hechima/${name}`]) {
+            try {
+                const buf = await adapter.readBinary(path);
+                if (looksValid(buf)) {
+                    note?.(`${mb(buf.byteLength)} — ${path}`);
+                    return buf;
+                }
+            } catch {
+                // 無いのが普通
+            }
+        }
+        return null;
+    }
+
+    async fromCache(name, note) {
+        try {
+            const buf = await idbGet(await this.idb(), name);
+            if (looksValid(buf)) {
+                note?.(`${mb(buf.byteLength)} — IndexedDB のキャッシュ`);
+                return buf;
+            }
+        } catch {
+            // IndexedDB が使えない環境（プライベートモード等）は諦めてダウンロードに回る
+        }
+        return null;
+    }
+
+    /**
+     * 配布元から取る。`requestUrl` は進捗を刻めないので、開始と完了だけ知らせる。
+     * 取得後は IndexedDB に置いて、次回以降は即座に立ち上がるようにする。
+     */
+    async download(name, note, onProgress) {
+        const spec = ASSETS[name];
+        if (!spec) throw new Error(`配布元が分からない: ${name}`);
+        onProgress?.(`${name} を取得中… (${spec.mb} MB)`);
+        const res = await requestUrl({ url: spec.url, method: "GET", throw: true });
+        let buf = res.arrayBuffer;
+        if (spec.gz) {
+            const head = new Uint8Array(buf, 0, 2);
+            if (head[0] !== 0x1f || head[1] !== 0x8b) throw new Error(`${spec.url} は gzip ではない`);
+            onProgress?.(`${name} を展開中…`);
+            buf = await gunzip(buf);
+        }
+        if (!looksValid(buf)) throw new Error(`${name} が不正（${buf?.byteLength ?? 0} bytes）`);
+        note?.(`${mb(buf.byteLength)} — ダウンロード（${spec.url}）`);
+        try {
+            await idbPut(await this.idb(), name, buf);
+        } catch {
+            // 保存できなくても今回は動く。次回また取り直すだけ
+        }
+        return buf;
+    }
+
+    /** 3 経路をこの順で試す */
+    async get(name, note, onProgress) {
+        return (
+            (await this.fromVault(name, note)) ??
+            (await this.fromCache(name, note)) ??
+            (await this.download(name, note, onProgress))
+        );
+    }
+
+    /** キャッシュを捨てる（取り直したいとき） */
+    async clearCache() {
+        const db = await this.idb();
+        for (const name of Object.keys(ASSETS)) await idbPut(db, name, null);
+    }
+
+    /** どこから読めるかを調べる（設定画面の表示用。ダウンロードはしない） */
+    async status() {
+        const out = {};
+        for (const name of Object.keys(ASSETS)) {
+            out[name] = (await this.fromVault(name)) ? "vault" : (await this.fromCache(name)) ? "キャッシュ" : "未取得";
+        }
+        return out;
+    }
+}
+
+
 // ==== src/engine.js ====
 // hechima のエンジン層 — wasm の起動と、変換セッション層への cb 実装。
 //
@@ -3587,6 +3757,8 @@ class HechimaEngine {
     constructor(app, manifest) {
         this.app = app;
         this.manifest = manifest;
+        this.assets = new AssetStore(app, manifest);
+        this.onProgress = null; // 初回ダウンロードの状況を伝えるフック
         this.mod = null;
         this.booting = null;
         this.suppressed = 0;
@@ -3600,24 +3772,12 @@ class HechimaEngine {
 
     // ---- 起動 ------------------------------------------------------------
 
-    /** バイナリを vault から読む。プラグインフォルダ → `hechima/` の順（iOS の Files アプリ対策） */
+    /**
+     * バイナリを入手する。vault → IndexedDB → ダウンロード の順（`src/assets.js`）。
+     * `onProgress` はダウンロード中の状況を知らせる（初回だけ数十秒かかるため）。
+     */
     async readAsset(name, onNote) {
-        const adapter = this.app.vault.adapter;
-        const tried = [];
-        for (const path of [`${this.manifest.dir}/${name}`, `hechima/${name}`]) {
-            try {
-                const buf = await adapter.readBinary(path);
-                if (!buf || buf.byteLength < 1024 * 1024) {
-                    tried.push(`${path}: サイズが不正 (${buf?.byteLength ?? 0} bytes)`);
-                    continue;
-                }
-                onNote?.(`${mb(buf.byteLength)} — ${path}`);
-                return buf;
-            } catch (e) {
-                tried.push(`${path}: ${String(e?.message ?? e)}`);
-            }
-        }
-        throw new Error(`${name} が見つからない\n      ${tried.join("\n      ")}`);
+        return this.assets.get(name, onNote, this.onProgress);
     }
 
     /**
@@ -3632,10 +3792,10 @@ class HechimaEngine {
             this.suppressed = 0;
             this.stderr = [];
 
-            const wasmBinary = await run("vault から hechima-wasm.wasm を読む", (note) =>
+            const wasmBinary = await run("hechima-wasm.wasm を入手", (note) =>
                 this.readAsset("hechima-wasm.wasm", note)
             );
-            const dict = await run("vault から mozc.data を読む", async (note) =>
+            const dict = await run("mozc.data を入手", async (note) =>
                 new Uint8Array(await this.readAsset("mozc.data", note))
             );
 
@@ -3671,6 +3831,7 @@ class HechimaEngine {
             });
 
             this.mod = mod;
+            this.onProgress?.(null); // 進捗表示を閉じる合図
             return mod;
         })();
         this.booting.catch(() => { this.booting = null; }); // 失敗したら次回やり直せる
@@ -3917,14 +4078,25 @@ const IME_STYLES = `
 }
 `;
 
-/** スタイルは JS から注入する（styles.css を別ファイルで配らずに済む） */
+/**
+ * スタイルを注入する（styles.css を別ファイルで配らずに済む）。
+ *
+ * **既にあっても中身を差し替える。** 「あれば何もしない」にすると、プラグインだけを
+ * リロードしたとき古い CSS が残り続ける（アプリ全体を再起動するまで直らない）。
+ * 実機で iPad と ChromeOS の見た目が食い違った原因がこれだった —— ChromeOS は Ctrl+R で
+ * 全体を、iPad は BRAT でプラグインだけをリロードしていた。
+ * 戻り値は撤去する関数（プラグインの unload に登録する）。
+ */
 function injectStyles() {
     const id = "hechima-ime-styles";
-    if (document.getElementById(id)) return;
-    const el = document.createElement("style");
-    el.id = id;
+    let el = document.getElementById(id);
+    if (!el) {
+        el = document.createElement("style");
+        el.id = id;
+        document.head.appendChild(el);
+    }
     el.textContent = IME_STYLES;
-    document.head.appendChild(el);
+    return () => el.remove();
 }
 
 /**
@@ -4149,6 +4321,9 @@ function createImeView() {
 /** 既定の配列。標準的な IME に一番近いところから始める */
 const DEFAULT_KEYMAP = "romaji_jis";
 
+/** vault 側の配列を置く場所。ドットフォルダではないので Files アプリからも触れる */
+const VAULT_KEYMAP_DIR = "hechima/keymaps";
+
 /**
  * IME の ON/OFF を直接切り替える物理キー。日本語キーボードの「かな」「英数」と、
  * 親指位置の変換/無変換。**届かない環境もある**ので、コマンド + ホットキーが本線で
@@ -4222,6 +4397,8 @@ class HechimaIME {
         this.fep = null;
         this.keyEngine = null; // KeymapEngine.InputEngine
         this.keymapId = DEFAULT_KEYMAP;
+        this.vaultKeymaps = new Map(); // vault 側の配列（id → JSON）
+        this.keymapErrors = []; // 読めなかったファイル（設定画面に出す）
         this.active = false;
         this.booting = null;
         this.composingNotice = null; // CM6 が取れない環境のフォールバック
@@ -4232,19 +4409,64 @@ class HechimaIME {
 
     // ---- 配列 ------------------------------------------------------------
 
-    /** 同梱している配列の一覧（id と表示名）。Phase 2.5 で vault 側が加わる */
-    static catalog() {
-        return Object.entries(BUNDLED_KEYMAPS).map(([id, json]) => ({
-            id,
-            name: json.name ?? id,
-            behavior: json.behavior?.type ?? "?",
-            origin: "同梱",
-        }));
+    /**
+     * 使える配列の一覧。**同梱と vault の両方**から集め、同 id は vault が勝つ。
+     * 出所を必ず持たせる（どちらが効いているか分からない状態を作らない）。
+     */
+    catalog() {
+        const out = new Map();
+        for (const [id, json] of Object.entries(BUNDLED_KEYMAPS)) {
+            out.set(id, { id, name: json.name ?? id, behavior: json.behavior?.type ?? "?", origin: "同梱" });
+        }
+        for (const [id, json] of this.vaultKeymaps) {
+            out.set(id, {
+                id,
+                name: json.name ?? id,
+                behavior: json.behavior?.type ?? "?",
+                origin: out.has(id) ? "vault（同梱を上書き）" : "vault",
+            });
+        }
+        return [...out.values()];
+    }
+
+    /** id → JSON。vault が同梱に勝つ */
+    keymapJson(id) {
+        return this.vaultKeymaps.get(id) ?? BUNDLED_KEYMAPS[id] ?? null;
+    }
+
+    /**
+     * vault の配列を読み込む。**1 ファイルの不正で全体を落とさない**（未知のキー名で
+     * 例外を投げる仕様なので、書きかけを保存した瞬間などに必ず起きる）。
+     * 失敗は errors に溜めて設定画面に並べる。
+     */
+    async loadVaultKeymaps() {
+        const adapter = this.plugin.app.vault.adapter;
+        const next = new Map();
+        this.keymapErrors = [];
+        let listing;
+        try {
+            listing = await adapter.list(VAULT_KEYMAP_DIR);
+        } catch {
+            this.vaultKeymaps = next; // フォルダが無いのが普通
+            return;
+        }
+        for (const path of listing.files ?? []) {
+            if (!path.endsWith(".json")) continue;
+            const id = path.split("/").pop().replace(/\.json$/, "");
+            try {
+                const json = JSON.parse(await adapter.read(path));
+                KeymapEngine.decodeKeymap(json); // 読める形か先に確かめる
+                next.set(id, json);
+            } catch (e) {
+                this.keymapErrors.push(`${path}: ${String(e?.message ?? e)}`);
+            }
+        }
+        this.vaultKeymaps = next;
     }
 
     /** 配列を差し替える。合成中なら KeymapEngine 側が確定してから切り替える */
     setKeymap(id) {
-        const json = BUNDLED_KEYMAPS[id];
+        const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         const expanded = KeymapEngine.decodeKeymap(json);
         this.keymapId = id;
@@ -4260,7 +4482,7 @@ class HechimaIME {
     }
 
     keymapName() {
-        return BUNDLED_KEYMAPS[this.keymapId]?.name ?? this.keymapId;
+        return this.keymapJson(this.keymapId)?.name ?? this.keymapId;
     }
 
     // ---- セッション ------------------------------------------------------
@@ -4482,7 +4704,7 @@ class HechimaIME {
 
 "use strict";
 
-const { Plugin, Notice, Modal, Setting, PluginSettingTab, Platform, apiVersion } = require("obsidian");
+const { Plugin, Notice, Modal, Setting, PluginSettingTab, Platform, apiVersion, requestUrl } = require("obsidian");
 
 // CodeMirror 6 は Obsidian が外部モジュールとして提供する。無い環境（node ハーネス等）でも
 // wasm 偵察だけは動かせるよう、取得失敗はここで飲み込む。
@@ -4586,6 +4808,11 @@ module.exports = class HechimaProbePlugin extends Plugin {
     async onload() {
         this.settings = Object.assign({ keymapId: "romaji_jis" }, await this.loadData());
         this.engine = new HechimaEngine(this.app, this.manifest);
+        // 初回だけ辞書のダウンロードで数十秒かかる。黙って止まったように見えないようにする
+        this.engine.onProgress = (msg) => {
+            this.dlNotice?.hide();
+            this.dlNotice = msg ? new Notice(`hechima: ${msg}`, 0) : null;
+        };
         this.ime = new HechimaIME(this);
         this.ime.keymapId = this.settings.keymapId;
         this.fep = null; // 偵察の「テスト変換」用（IME とは別に持つ）
@@ -4651,12 +4878,29 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
         this.addSettingTab(new HechimaSettingTab(this.app, this));
 
+        // vault 側の配列を読み、**保存した瞬間に反映する**。
+        // Obsidian で JSON を編集してそのまま打ち比べられる = ラボより速い試打環境になる。
+        await this.ime.loadVaultKeymaps();
+        const reload = async (file) => {
+            if (!file?.path?.startsWith("hechima/keymaps/")) return;
+            await this.ime.loadVaultKeymaps();
+            try {
+                this.ime.setKeymap(this.settings.keymapId);
+                new Notice(`hechima: 配列を再読込（${this.ime.keymapName()}）`);
+            } catch (e) {
+                new Notice(`hechima: 配列の再読込に失敗 — ${String(e?.message ?? e)}`);
+            }
+        };
+        for (const ev of ["modify", "create", "delete", "rename"]) {
+            this.registerEvent(this.app.vault.on(ev, reload));
+        }
+
         this.registerKeyProbe();
         this.registerImeKeys();
 
         // 表示層（未確定の Decoration + 候補の showTooltip）
         if (this.ime.view) {
-            injectStyles();
+            this.register(injectStyles()); // unload で撤去（次のロードで確実に差し替わる）
             this.registerEditorExtension(this.ime.view.extension);
         }
     }
@@ -4692,6 +4936,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
     }
 
     onunload() {
+        this.dlNotice?.hide();
         this.ime?.dispose();
         this.engine?.dispose();
         this.fep?.reset();
@@ -5303,7 +5548,7 @@ class HechimaSettingTab extends PluginSettingTab {
             .setName("配列")
             .setDesc("打鍵をかなに変換する規則。同梱分から選ぶ（vault の配列は Phase 2.5）")
             .addDropdown((d) => {
-                for (const k of HechimaIME.catalog()) {
+                for (const k of this.plugin.ime.catalog()) {
                     d.addOption(k.id, `${k.name}（${k.behavior === "chord" ? "同時打鍵" : "逐次"}・${k.origin}）`);
                 }
                 d.setValue(this.plugin.settings.keymapId);
@@ -5317,6 +5562,22 @@ class HechimaSettingTab extends PluginSettingTab {
                     }
                 });
             });
+
+        // vault 側の配列（Phase 2.5）
+        new Setting(containerEl)
+            .setName("vault の配列")
+            .setDesc(
+                `${VAULT_KEYMAP_DIR}/*.json を置くと一覧に加わります。` +
+                    "同じ id なら同梱より vault が優先され、保存した瞬間に反映されます。"
+            );
+        const vaultCount = this.plugin.ime.vaultKeymaps.size;
+        containerEl.createEl("p", {
+            text: vaultCount ? `読み込み済み: ${vaultCount} 件` : "まだ置かれていません",
+        });
+        for (const err of this.plugin.ime.keymapErrors) {
+            const p = containerEl.createEl("p", { text: `読めません — ${err}` });
+            p.style.color = "var(--text-error)";
+        }
 
         new Setting(containerEl)
             .setName("日本語入力")
