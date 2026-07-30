@@ -4119,6 +4119,22 @@ const IME_STYLES = `
   opacity: .55;
 }
 .hechima-cand-dot.on { background: var(--text-muted); opacity: 1; }
+.hechima-mode-badge {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0,0,0,.15));
+  color: var(--text-normal);
+  font-family: var(--font-interface, sans-serif);
+  font-size: .8rem;
+  padding: 2px 8px;
+  white-space: nowrap;
+  animation: hechima-mode-fade 1.2s ease-in forwards;
+}
+@keyframes hechima-mode-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
 `;
 
 /**
@@ -4332,6 +4348,34 @@ function createImeView() {
     }
 
     const setIme = StateEffect.define();
+    const setModeFlash = StateEffect.define();
+
+    /** モード切替のフラッシュ表示。ステータスバーの無いモバイルでの唯一のモード可視化 */
+    const modeField = StateField.define({
+        create: () => null,
+        update(value, tr) {
+            for (const e of tr.effects) if (e.is(setModeFlash)) return e.value;
+            if (!value) return value;
+            return tr.docChanged ? { ...value, pos: tr.changes.mapPos(value.pos, 1) } : value;
+        },
+        provide: (f) =>
+            showTooltip.from(f, (v) =>
+                v
+                    ? {
+                          pos: v.pos,
+                          above: true,
+                          strictSide: false,
+                          arrow: false,
+                          create: () => {
+                              const dom = document.createElement("div");
+                              dom.className = "hechima-mode-badge";
+                              dom.textContent = v.text;
+                              return { dom };
+                          },
+                      }
+                    : null
+            ),
+    });
 
     const imeField = StateField.define({
         create: () => null,
@@ -4353,8 +4397,22 @@ function createImeView() {
         ],
     });
 
+    let modeTimer = null;
+
     return {
-        extension: imeField,
+        extension: [imeField, modeField],
+        /** モード切替をキャレット位置に短時間だけ出す（アニメーションで消え、状態も外す） */
+        flashMode(view, text) {
+            if (!view) return;
+            view.dispatch({
+                effects: setModeFlash.of({ text, pos: view.state.selection.main.head }),
+            });
+            if (modeTimer !== null) clearTimeout(modeTimer);
+            modeTimer = setTimeout(() => {
+                modeTimer = null;
+                view.dispatch({ effects: setModeFlash.of(null) });
+            }, 1300);
+        },
         /** 未確定を描き替える。segments が空なら消す */
         render(view, segments) {
             if (!view) return;
@@ -4479,6 +4537,7 @@ class HechimaIME {
         this.booting = null;
         this.composingNotice = null; // CM6 が取れない環境のフォールバック
         this.composing = ""; // 未確定文字列
+        this.bsGuardUntil = 0; // BS で合成を消し切った直後の吸収窓の期限
         this.view = createImeView(); // CM6 の表示層（null = フォールバック）
         this.onStatus = null; // ステータスバー更新のフック
     }
@@ -4668,6 +4727,9 @@ class HechimaIME {
             this.hide();
         }
         this.onStatus?.();
+        // モバイルにはステータスバーが無いので、キャレット位置に短時間のバッジを出す。
+        // Notice の常時表示は邪魔（実機の指摘）— 切り替えた瞬間だけ、その場で分かればよい
+        this.view?.flashMode(this.cmView(), on ? `あ ${this.keymapName()}` : "A 直接入力");
     }
 
     async toggle() {
@@ -4730,6 +4792,16 @@ class HechimaIME {
             return true;
         }
 
+        // BS の吸収窓（上記 feedOrPass 参照）。リピート経路より先に判定する
+        if (
+            e.code === "Backspace" && !this.isComposing() &&
+            performance.now() < this.bsGuardUntil
+        ) {
+            this.bsGuardUntil = performance.now() + 250; // 連打が続く限り延長
+            e.preventDefault();
+            return true;
+        }
+
         // 候補窓が出ている間の 1-9 = 窓内の直接選択（標準 IME の作法）。
         // セッションの routing には触れず、ホストの方針としてここで先取りする。
         if (
@@ -4757,8 +4829,17 @@ class HechimaIME {
     }
 
     feedOrPass(e) {
+        const wasComposing = this.isComposing();
         const taken = this.fep.feed(e);
         if (taken) e.preventDefault();
+        // **BS で合成を消し切った直後の吸収窓。** よみを BS 連打で消していると、最後の
+        // 1 文字が消えた次の打鍵から本文に効いてしまい、「未確定を消していたつもりが
+        // 本文の文字まで消えた」事故になる（iPad 実機で報告）。消し切りから短時間だけ
+        // 追加の BS を握り潰す。確定（Enter 等）で合成が終わった場合は張らない —
+        // 確定直後の BS は本文への意図的な削除なので効くべき。
+        if (wasComposing && !this.isComposing() && e.code === "Backspace") {
+            this.bsGuardUntil = performance.now() + 250;
+        }
         return taken;
     }
 
