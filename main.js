@@ -2336,7 +2336,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.15.0";
+	const HECHIMA_VERSION = "0.16.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -2984,6 +2984,10 @@ var Hechima = (function () {
 			}
 			if (t === "convert" || t === "confirm" || t === "insertAndConfirm") {
 				const yomiRestored = !segs && composing() && !(engine && engine.getState().isComposing);
+				if (t === "convert" && !segs && !yomiRestored && !composing() && !(engine && engine.getState().isComposing)) {
+					cb.commit("　");
+					return true;
+				}
 				if (!segs && !yomiRestored) {
 					if (t === "insertAndConfirm" || t === "confirm" && engine && engine.getState().isComposing) commitYomiDirect = true;
 					return false;
@@ -3899,7 +3903,6 @@ class HechimaIME {
         this.booting = null;
         this.composingNotice = null;
         this.composing = ""; // 未確定文字列（Notice の有無に頼らない）
-        this.spaceIsShift = false; // この配列が space をシフトキーに使うか
         this.onStatus = null; // ステータスバー更新のフック
     }
 
@@ -3920,12 +3923,6 @@ class HechimaIME {
         const json = BUNDLED_KEYMAPS[id];
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         const expanded = KeymapEngine.decodeKeymap(json);
-        // space をシフトキーに使う配列（薙刀式の SandS・NICOLA US の左親指）では、
-        // ホストが Space を横取りしてはいけない。物理 space が何の役に割り当てられているかを
-        // hidToKey で引いてから shiftKeys と突き合わせる（US の NICOLA は space = leftThumb）
-        const cfg = json.behavior?.config ?? {};
-        const spaceRole = (cfg.hidToKey ?? {}).space;
-        this.spaceIsShift = !!spaceRole && (cfg.shiftKeys ?? []).some((sk) => sk.key === spaceRole);
         this.keymapId = id;
         if (this.keyEngine) {
             this.keyEngine.setKeymap(expanded);
@@ -4043,24 +4040,11 @@ class HechimaIME {
             // 「合成中だけ捨てる」ではいけない: chord の 1 キー目を押しっぱなしにしている間は
             // エンジンが解決を待っていて未確定表示がまだ無いため、素通しした文字が本文に漏れる
             // （実測: 薙刀式で N を保持すると "nnnnnnnn" が入り、F を足して初めて「だ」になる）。
-            // 移動・削除系だけは通常の連続動作を殺さないよう通す。
-            if (!REPEAT_PASS_CODES.has(e.code)) {
-                e.preventDefault();
-                return true;
-            }
-            return this.feedOrPass(e);
-        }
-
-        // 空バッファでの Space は**文書に空白を入れる**（標準 IME の作法）。
-        // エンジンに任せると全角スペースが confirmedText 経由で「よみ」として合成に入り、
-        // 未確定表示に居座ってしまう（エンジンは「文書に入れる文字」と「かな」を同じ経路で
-        // 返すため、セッション側で区別できない）。ホストの方針としてここで先取りする。
-        // space をシフトキーに使う配列では**絶対に横取りしない**（SandS が壊れる）。
-        if (
-            e.code === "Space" && !this.spaceIsShift && !this.isComposing() &&
-            !e.ctrlKey && !e.altKey && !e.metaKey
-        ) {
-            this.editor()?.replaceSelection(e.shiftKey ? " " : "　");
+            //
+            // 移動・削除系は**セッションに渡さずそのまま素通しする**。渡すとセッションが
+            // 取り込んでしまい（非リピートでは取り込まないのに、リピートだと取り込む）、
+            // preventDefault でカーソルが動かなくなる（実測）。既定動作に任せるのが正しい。
+            if (REPEAT_PASS_CODES.has(e.code)) return false;
             e.preventDefault();
             return true;
         }
