@@ -4729,6 +4729,37 @@ class HechimaIME {
         return this.composing.length > 0;
     }
 
+    /**
+     * 確定済みテキストの再変換。選択範囲を surface として fep.reconvert に渡す。
+     *
+     * 作法は d.ts / ラボの doReconvert と同じ:
+     *   1. 選択を検証（空・改行入り・64 文字超は対象外）
+     *   2. **先に**文書から選択範囲を取り除く（composition がその位置に開く）
+     *   3. fep.reconvert(surface) — false（逆変換不能）なら取り除いた分を戻す
+     */
+    async reconvertSelection() {
+        if (this.isComposing()) return false; // 合成中は対象外（標準 IME と同じ）
+        const editor = this.editor();
+        if (!editor) return false;
+        const surface = editor.getSelection?.() ?? "";
+        if (!surface || surface.includes("\n") || Array.from(surface).length > 64) return false;
+        await this.boot();
+        if (!this.active) await this.setActive(true); // 再変換は IME ON を含意する
+        editor.replaceSelection(""); // 取り除いた位置に候補が開く
+        const ok = await this.fep.reconvert(surface);
+        if (!ok) {
+            editor.replaceSelection(surface); // 逆変換不能 → 元に戻す
+            new Notice("hechima: 再変換できませんでした");
+        }
+        return ok;
+    }
+
+    /** セッションを初期状態に戻す。fep.reset() は表示を消さない（hide はホスト責務）ので対で行う */
+    reset() {
+        this.fep?.reset();
+        this.hide();
+    }
+
     dispose() {
         this.hide();
         this.fep?.reset();
@@ -4924,6 +4955,11 @@ module.exports = class HechimaProbePlugin extends Plugin {
             editorCallback: (editor, view) => this.toggleCapture(view),
         });
 
+        this.addCommand({
+            id: "reconvert",
+            name: "再変換（選択したテキストを変換し直す）",
+            editorCallback: () => void this.ime.reconvertSelection(),
+        });
         this.addCommand({
             id: "toggle-ime",
             name: "日本語入力の ON / OFF",
