@@ -2371,7 +2371,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.17.0";
+	const HECHIMA_VERSION = "0.18.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3014,7 +3014,13 @@ var Hechima = (function () {
 		function handleEngineAction(action) {
 			const t = action.type;
 			if (t === "insertSpace") {
-				if (!(!segs && !composing() && !(engine && engine.getState().isComposing))) return handleEngineAction({ type: "convert" });
+				if (!(!segs && !composing() && !(engine && engine.getState().isComposing))) {
+					if (action.shifted && segs) {
+						candPrev();
+						return true;
+					}
+					return handleEngineAction({ type: "convert" });
+				}
 				cb.commit(action.shifted ? " " : "　");
 				return true;
 			}
@@ -3937,6 +3943,27 @@ class HechimaEngine {
         }
     }
 
+    /**
+     * 学習をリセットする。対象は学習ファイル（segment.db / boundary.db）だけで、
+     * **ユーザー辞書（user_dictionary.db）は消さない** — worker の clearLearning と同じ区別。
+     * wasm 内のメモリ状態は dispose で捨てる（呼び元が再起動する）。
+     */
+    async clearLearning() {
+        if (this.saveTimer !== null) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
+        const adapter = this.app.vault.adapter;
+        for (const name of ["segment.db", "boundary.db"]) {
+            try {
+                await adapter.remove(`${this.learningDir()}/${name}`);
+            } catch {
+                // 無いのは成功扱い
+            }
+        }
+        this.dispose();
+    }
+
     /** 確定のたびに書くと重いので debounce する（worker と同じ 3 秒） */
     scheduleSave() {
         if (this.saveTimer !== null) clearTimeout(this.saveTimer);
@@ -4074,6 +4101,7 @@ const IME_STYLES = `
   padding: 2px 0;
 }
 .hechima-cand {
+  cursor: pointer;
   display: flex;
   /* サイズの違う番号と本文を並べるので縦位置をそろえる。
      既定の stretch だと小さい方（番号・注釈）が行の上端に張り付く */
@@ -4338,6 +4366,12 @@ function createImeView() {
                     body.className = "hechima-cand-body";
                     body.textContent = text;
                     row.append(num, body);
+                    // クリック/タップで選択（ラボと同じ mousedown。click だと mousedown 時点の
+                    // フォーカス移動でエディタが blur してしまう）。iPad のタッチも mousedown に合成される
+                    row.addEventListener("mousedown", (ev) => {
+                        ev.preventDefault();
+                        handlers.onSelectCandidate?.(abs);
+                    });
                     dom.appendChild(row);
                 });
 
@@ -4407,8 +4441,13 @@ function createImeView() {
 
     let modeTimer = null;
 
+    // 候補行のクリック/タップ → selectCandidate。view はセッションを知らないので、
+    // ime 側が boot 後にここへ実体を差す（null の間は表示専用）
+    const handlers = { onSelectCandidate: null };
+
     return {
         extension: [imeField, modeField],
+        handlers,
         /** モード切替をキャレット位置に短時間だけ出す（アニメーションで消え、状態も外す） */
         flashMode(view, text) {
             if (!view) return;
@@ -4677,6 +4716,8 @@ class HechimaIME {
                 retract: (text) => this.retract(text),
             });
             this.setKeymap(this.keymapId);
+            // 候補行のクリック/タップ（表示層からの唯一の逆方向配線）
+            if (this.view) this.view.handlers.onSelectCandidate = (i) => this.fep.selectCandidate(i);
             return this.fep;
         })();
         this.booting.catch(() => { this.booting = null; });
@@ -5808,6 +5849,20 @@ class HechimaSettingTab extends PluginSettingTab {
             const p = containerEl.createEl("p", { text: `読めません — ${err}` });
             p.style.color = "var(--text-error)";
         }
+
+        new Setting(containerEl)
+            .setName("学習をリセット")
+            .setDesc("変換の学習（候補の並び・文節区切り）を消します。ユーザー辞書は消えません")
+            .addButton((b) => {
+                b.setButtonText("リセット");
+                b.onClick(async () => {
+                    const wasActive = this.plugin.ime.active;
+                    this.plugin.ime.dispose();
+                    await this.plugin.engine.clearLearning();
+                    if (wasActive) await this.plugin.ime.setActive(true);
+                    new Notice("hechima: 学習をリセットしました");
+                });
+            });
 
         new Setting(containerEl)
             .setName("日本語入力")
