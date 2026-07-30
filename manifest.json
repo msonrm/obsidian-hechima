@@ -1,7 +1,7 @@
 {
   "id": "hechima-probe",
   "name": "hechima probe (reconnaissance)",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "minAppVersion": "1.4.0",
   "description": "hechima の mozc wasm が Obsidian（特に iOS）で起動して変換できるかを測るだけの偵察プラグイン。入力機能はまだ無い。",
   "author": "msonrm",

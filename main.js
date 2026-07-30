@@ -3875,9 +3875,9 @@ const IME_STYLES = `
 }
 .hechima-cand {
   display: flex;
-  /* サイズの違う番号と本文を並べるので、**ベースラインで揃える**。
+  /* サイズの違う番号と本文を並べるので縦位置をそろえる。
      既定の stretch だと小さい方（番号・注釈）が行の上端に張り付く */
-  align-items: baseline;
+  align-items: center;
   gap: .6em;
   padding: 1px 8px;
   color: var(--text-normal);
@@ -3991,6 +3991,30 @@ function createImeView() {
     }
 
     /**
+     * 注目文節の左端が、未確定表示の左端から何 px 右にあるかを測る。
+     *
+     * 候補窓は文書位置（= 未確定表示の先頭）にアンカーされるので、これを `offset` に足すと
+     * **注目文節の左端に候補窓の左端がそろう**（標準 IME の挙動）。文節を ←→ で移動すると
+     * 候補窓も一緒に動く。
+     *
+     * 文節の移動では各文節の**文字列は変わらず kind だけが変わる**ので、更新が DOM に反映される
+     * 前に現在の DOM を測っても位置は正しい。念のため子要素数が一致するときだけ使う。
+     */
+    function focusOffsetX(view, segments) {
+        const focusIdx = segments.findIndex((s) => s.kind === "focus");
+        if (focusIdx <= 0) return 0;
+        try {
+            const wrap = view.dom.querySelector(".hechima-composing");
+            const spans = wrap?.children;
+            if (!spans || spans.length !== segments.length) return 0;
+            const left = wrap.getBoundingClientRect().left;
+            return Math.round(spans[focusIdx].getBoundingClientRect().left - left);
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
      * 候補窓。**ページ送り**で見せる（標準 IME と同じ）。
      * 中央スクロールにすると選択位置が窓の途中で固定され、番号と候補の対応が崩れる。
      */
@@ -4063,7 +4087,8 @@ function createImeView() {
                     : `${idx + 1}/${cands.length}` + (pages > 1 ? `  (${page + 1}/${pages} ページ)` : "");
                 dom.appendChild(foot);
 
-                return { dom };
+                // 注目文節の左端にそろえる（文節移動で候補窓も動く）
+                return { dom, offset: { x: focusOffsetX(view, state.segments), y: 0 } };
             },
         };
     }
