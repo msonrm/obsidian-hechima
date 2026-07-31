@@ -4042,6 +4042,59 @@ class HechimaEngine {
         }
     }
 
+    // ---- ユーザー辞書 -----------------------------------------------------
+    //
+    // 実体は wasm の /tmp/user_dictionary.db。学習と同じく **vault に永続化**するので
+    // Obsidian Sync が端末間へ運ぶ（`PERSIST_FILES` に入っている）。
+    //
+    // **1 件ごとに辞書全体の Load/Save と ReloadAndWait が走る**（hechima_dict_add の実装）。
+    // だから一括インポートを add のループで書いてはいけない。まとめて入れる needs が出たら
+    // wasm 側にバッチ API を足すこと。
+
+    /** 登録済みエントリ。`[{ reading, word, pos }]`。未対応 wasm では null */
+    dictList() {
+        if (!this.mod || !this.has("dict_list")) return null;
+        try {
+            const json = this.mod.ccall("hechima_dict_list", "string", [], []);
+            const parsed = JSON.parse(json);
+            return Array.isArray(parsed?.entries) ? parsed.entries : [];
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 追加。戻り値は wasm の rc（0 = 成功 / -5 = よみに使えない文字）。
+     * よみの正規化と検証は Mozc 純正（カタカナ→ひらがな、かな + 英数字のみ）。
+     */
+    dictAdd(reading, word, pos) {
+        if (!this.mod || !this.has("dict_add")) return -1;
+        try {
+            const rc = this.mod.ccall(
+                "hechima_dict_add",
+                "number",
+                ["string", "string", "number"],
+                [reading, word, pos | 0]
+            );
+            if (rc === 0) this.scheduleSave();
+            return rc;
+        } catch {
+            return -1;
+        }
+    }
+
+    /** 削除。index は dictList() の並び順 */
+    dictRemove(index) {
+        if (!this.mod || !this.has("dict_remove")) return -1;
+        try {
+            const rc = this.mod.ccall("hechima_dict_remove", "number", ["number"], [index | 0]);
+            if (rc === 0) this.scheduleSave();
+            return rc;
+        } catch {
+            return -1;
+        }
+    }
+
     /** 確定アンドゥの学習巻き戻し。不成立 learn の後は no-op */
     unlearn() {
         if (!this.mod || !this.has("revert")) return;
@@ -5136,6 +5189,164 @@ class ReportModal extends Modal {
     }
 }
 
+/**
+ * 品詞。mozc の `UserDictionary.PosType`（`user_dictionary_storage.proto`）の実値。
+ * 全 44 種あるが、手で 1 件ずつ足す用途で意味があるのはこのあたりだけ。
+ */
+const DICT_POS = [
+    [1, "名詞"],
+    [4, "固有名詞"],
+    [5, "人名"],
+    [6, "姓"],
+    [7, "名"],
+    [8, "組織"],
+    [9, "地名"],
+    [2, "短縮よみ"],
+    [15, "顔文字"],
+    [44, "抑制単語"],
+];
+const DICT_POS_NAME = new Map(DICT_POS);
+
+/**
+ * ユーザー辞書。一覧・追加・削除と TSV 書き出し。
+ *
+ * 設定タブではなく専用モーダルにしてある。数百件のリストを設定に置くと他の項目が沈むため。
+ *
+ * **一括インポートはここには無い。** `hechima_dict_add` は 1 件ごとに辞書全体の Load/Save と
+ * エンジンの `ReloadAndWait` を走らせるので、ループで呼ぶと件数分リロードする。
+ * まとめて入れる必要が出たら wasm 側にバッチ API を足すこと（`TODO.md`）。
+ */
+class UserDictModal extends Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    async onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h3", { text: "ユーザー辞書" });
+        this.body = contentEl.createDiv();
+        await this.plugin.ime.setActive(this.plugin.ime.active); // エンジンを起こす
+        this.render();
+    }
+
+    entries() {
+        return this.plugin.engine.dictList();
+    }
+
+    render() {
+        const el = this.body;
+        el.empty();
+
+        const list = this.entries();
+        if (list === null) {
+            el.createEl("p", { text: "変換エンジンがまだ起きていません。日本語入力を一度 ON にしてください" });
+            return;
+        }
+
+        // --- 追加フォーム ---
+        const form = el.createEl("form");
+        form.style.display = "flex";
+        form.style.gap = "6px";
+        form.style.flexWrap = "wrap";
+        form.style.marginBottom = "12px";
+
+        const reading = form.createEl("input", { attr: { placeholder: "よみ（ひらがな）", required: "true" } });
+        const word = form.createEl("input", { attr: { placeholder: "単語", required: "true" } });
+        reading.style.flex = "1 1 8em";
+        word.style.flex = "1 1 8em";
+
+        const pos = form.createEl("select");
+        for (const [value, label] of DICT_POS) {
+            pos.createEl("option", { text: label, attr: { value: String(value) } });
+        }
+
+        const submit = form.createEl("button", { text: "登録", attr: { type: "submit" } });
+        submit.classList.add("mod-cta");
+        form.onsubmit = (ev) => {
+            ev?.preventDefault?.();
+            const r = reading.value.trim();
+            const w = word.value.trim();
+            if (!r || !w) return;
+            const rc = this.plugin.engine.dictAdd(r, w, Number(pos.value));
+            // rc は wasm の戻り値。-5 = よみの検証で弾かれた（Mozc 純正: かな + 英数字のみ）
+            if (rc === -5) {
+                new Notice("よみに使えない文字があります（ひらがな・カタカナ・英数字のみ）");
+                return;
+            }
+            if (rc !== 0) {
+                new Notice(`登録できませんでした（rc=${rc}）`);
+                return;
+            }
+            new Notice(`辞書に追加: ${r} → ${w}`);
+            this.render();
+        };
+
+        // --- 一覧 ---
+        el.createEl("p", {
+            text: list.length ? `${list.length} 件` : "まだ登録がありません",
+        }).style.color = "var(--text-muted)";
+
+        if (list.length) {
+            const box = el.createDiv();
+            box.style.maxHeight = "50vh";
+            box.style.overflowY = "auto";
+            list.forEach((e, i) => {
+                const row = box.createDiv();
+                row.style.display = "flex";
+                row.style.alignItems = "center";
+                row.style.gap = "8px";
+                row.style.padding = "2px 0";
+                const label = row.createSpan({
+                    text: `${e.reading} → ${e.word}`,
+                });
+                label.style.flex = "1";
+                const posEl = row.createSpan({ text: DICT_POS_NAME.get(e.pos) ?? `品詞 ${e.pos}` });
+                posEl.style.color = "var(--text-muted)";
+                posEl.style.fontSize = "0.85em";
+                const del = row.createEl("button", { text: "削除" });
+                del.onclick = () => {
+                    // **index は一覧の並び順**。削除で番号がずれるので毎回引き直す
+                    if (this.plugin.engine.dictRemove(i) !== 0) {
+                        new Notice("削除できませんでした");
+                        return;
+                    }
+                    this.render();
+                };
+            });
+        }
+
+        // --- 書き出し ---
+        const bar = el.createDiv();
+        bar.style.display = "flex";
+        bar.style.gap = "8px";
+        bar.style.marginTop = "12px";
+        const exp = bar.createEl("button", { text: "TSV で書き出す" });
+        exp.onclick = () => void this.exportTsv(list);
+    }
+
+    /**
+     * Google 日本語入力 / Gboard と同じ TSV（よみ・単語・品詞）で vault に書き出す。
+     * 読み込みは未対応 —— 入れるには wasm のバッチ API が要る（上のクラスコメント）。
+     */
+    async exportTsv(list) {
+        if (!list?.length) {
+            new Notice("書き出すものがありません");
+            return;
+        }
+        const tsv = list
+            .map((e) => [e.reading, e.word, DICT_POS_NAME.get(e.pos) ?? "名詞"].join("\t"))
+            .join("\n");
+        const path = "hechima-user-dictionary.txt";
+        await this.app.vault.adapter.write(path, `${tsv}\n`);
+        new Notice(`${path} に ${list.length} 件を書き出しました`);
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
 module.exports = class HechimaProbePlugin extends Plugin {
     async onload() {
         this.settings = Object.assign({ keymapId: "builtin_romaji", roleKeys: {} }, await this.loadData());
@@ -5171,6 +5382,11 @@ module.exports = class HechimaProbePlugin extends Plugin {
             id: "reconvert",
             name: "再変換（選択したテキストを変換し直す）",
             editorCallback: () => void this.ime.reconvertSelection(),
+        });
+        this.addCommand({
+            id: "user-dictionary",
+            name: "ユーザー辞書",
+            callback: () => new UserDictModal(this.app, this).open(),
         });
 
         // --- 以下は診断用。不具合の切り分けに使う ---
@@ -6038,6 +6254,14 @@ class HechimaSettingTab extends PluginSettingTab {
         }
 
         new Setting(containerEl)
+            .setName("ユーザー辞書")
+            .setDesc("変換できない語を登録します。学習と同じく vault に置くので端末間で同期します")
+            .addButton((b) => {
+                b.setButtonText("開く");
+                b.onClick(() => new UserDictModal(this.app, this.plugin).open());
+            });
+
+        new Setting(containerEl)
             .setName("学習をリセット")
             .setDesc("変換の学習（候補の並び・文節区切り）を消します。ユーザー辞書は消えません")
             .addButton((b) => {
@@ -6063,6 +6287,9 @@ class HechimaSettingTab extends PluginSettingTab {
 
 // 結合された vendor を 1 か所から引けるようにする。実機のコマンドと node ハーネスが
 // 同じものを見るための口で、Phase 0 の完了条件（3 本が名前で引ける）を機械的に確かめられる。
+// テストから内部クラスを引くための口（__vendor と同じ趣旨）
+module.exports.__internals = { UserDictModal, ReportModal };
+
 module.exports.__vendor = {
     HechimaModule: typeof HechimaModule === "function" ? HechimaModule : undefined,
     KeymapEngine: typeof KeymapEngine === "undefined" ? undefined : KeymapEngine,
