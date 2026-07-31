@@ -5907,6 +5907,48 @@ class HechimaSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    /** 役に物理キーを割り当てる（押して取得・一覧選択の共通経路） */
+    async assignRole(role, code) {
+        this.plugin.settings.roleKeys ??= {};
+        if (code) this.plugin.settings.roleKeys[role] = code;
+        else delete this.plugin.settings.roleKeys[role];
+        await this.plugin.saveSettings();
+        this.plugin.applyKeymap();
+        this.display(); // 「いま:」と一覧の選択を更新
+    }
+
+    /**
+     * 次に押されたキーを取得して役に割り当てる。
+     *
+     * capture フェーズで拾い、Obsidian のホットキーより先に止める。**OS が奪うキーは
+     * ここにも来ない** —— 押しても反応しなければ、そのキーはこの端末では使えないという
+     * ことがその場で分かる（iPadOS の 英数 / かな がこれ）。
+     */
+    captureKey(role, button) {
+        if (this.capturing) this.capturing(); // 別の取得中なら畳む
+        button.setButtonText("キーを押してください（Esc で中止）");
+        const onKey = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stop();
+            if (e.code === "Escape") return;
+            void this.assignRole(role, e.code);
+        };
+        const stop = () => {
+            document.removeEventListener("keydown", onKey, true);
+            clearTimeout(timer);
+            this.capturing = null;
+            button.setButtonText("キーを押して割り当て");
+        };
+        const timer = setTimeout(stop, 8000); // 押さずに放置したら戻す
+        document.addEventListener("keydown", onKey, true);
+        this.capturing = stop;
+    }
+
+    hide() {
+        this.capturing?.(); // 設定を閉じたら取得も畳む
+    }
+
     display() {
         const { containerEl } = this;
         containerEl.empty();
@@ -5935,7 +5977,8 @@ class HechimaSettingTab extends PluginSettingTab {
                 text:
                     "配列が決めるのは「左親指」などの役だけで、それをどの物理キーに置くかは" +
                     "キーボードと OS 次第です。iPadOS は 英数 / かな / 無変換 / 変換 を" +
-                    "入力ソース切替に予約していてアプリに届きません（ChromeOS では届きます）。",
+                    "入力ソース切替に予約していてアプリに届きません（ChromeOS では届きます）。" +
+                    "「キーを押して割り当て」で反応しないキーは、この端末では使えないキーです。",
             });
             desc.style.color = "var(--text-muted)";
             desc.style.fontSize = "var(--font-ui-smaller, .85em)";
@@ -5944,17 +5987,18 @@ class HechimaSettingTab extends PluginSettingTab {
                 new Setting(containerEl)
                     .setName(ROLE_LABELS[role] ?? role)
                     .setDesc(`いま: ${current ?? "（未割当）"}`)
+                    // **押して割り当てる**のが本線。押せないキー（OS に奪われている）は
+                    // そもそも使えないキーなので、この UI 自体が実機の可用性テストになる
+                    .addButton((b) => {
+                        b.setButtonText("キーを押して割り当て");
+                        b.onClick(() => this.captureKey(role, b));
+                    })
+                    // 一覧は補助。いま押せないキーを別端末向けに仕込むときに使う
+                    // （設定は同期するので、ChromeOS で決めた割当が iPad にも渡る）
                     .addDropdown((d) => {
                         for (const [code, label] of ROLE_CHOICES) d.addOption(code, label);
                         d.setValue(this.plugin.settings.roleKeys?.[role] ?? "");
-                        d.onChange(async (code) => {
-                            this.plugin.settings.roleKeys ??= {};
-                            if (code) this.plugin.settings.roleKeys[role] = code;
-                            else delete this.plugin.settings.roleKeys[role];
-                            await this.plugin.saveSettings();
-                            this.plugin.applyKeymap();
-                            this.display(); // 「いま:」を更新
-                        });
+                        d.onChange(async (code) => this.assignRole(role, code || null));
                     });
             }
         }
