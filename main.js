@@ -4618,6 +4618,30 @@ class HechimaIME {
         return [...out.values()];
     }
 
+    /**
+     * この配列がシフトに使う「役」の一覧（NICOLA なら leftThumb / rightThumb、
+     * 薙刀式なら space）。設定 UI が割り当て先を出すのに使う。
+     */
+    shiftRoles(id = this.keymapId) {
+        const json = this.keymapJson(id);
+        const cfg = json?.behavior?.config;
+        if (!cfg?.shiftKeys) return [];
+        return cfg.shiftKeys.map((sk) => sk.key);
+    }
+
+    /** 役 → 現在の物理キー（browser code）。上書きが無ければ JSON の宣言から引く */
+    roleCode(role, id = this.keymapId) {
+        const override = this.plugin.settings.roleKeys?.[role];
+        if (override) return override;
+        const hidToKey = this.keymapJson(id)?.behavior?.config?.hidToKey ?? {};
+        for (const [hidName, r] of Object.entries(hidToKey)) {
+            if (r !== role) continue;
+            const code = KeymapEngine.hidNameToBrowserCode?.(hidName);
+            if (code) return code;
+        }
+        return null;
+    }
+
     /** id → JSON。vault が同梱に勝つ */
     keymapJson(id) {
         return this.vaultKeymaps.get(id) ?? BUNDLED_KEYMAPS[id] ?? null;
@@ -4666,11 +4690,33 @@ class HechimaIME {
         }
         const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
-        const expanded = KeymapEngine.decodeKeymap(json);
+        // **親指キー等の物理割当を設定で上書きする。**
+        // 配列が定義すべきは役（leftThumb / rightThumb / space）であって、それをどの物理キーに
+        // 置くかは環境の関心事 —— OS が奪う（iPadOS の 英数/かな）・キーボードが違う・
+        // 各人の好み、で変わる（docs/keymap-v2-sketch.md §3.6 の「役割バインド」型）。
+        // JSON は触らず、decode 前に hidToKey を差し替える。
+        const overrides = this.plugin.settings.roleKeys ?? {};
+        const roles = new Set((json.behavior?.config?.shiftKeys ?? []).map((sk) => sk.key));
+        let effective = json;
+        const applicable = Object.entries(overrides).filter(([role]) => roles.has(role));
+        if (applicable.length) {
+            const cfg = { ...json.behavior.config, hidToKey: { ...json.behavior.config.hidToKey } };
+            for (const [role, code] of applicable) {
+                // その役の既存割当を外し、指定された物理キーだけを割り当てる
+                for (const [hidName, r] of Object.entries(cfg.hidToKey)) {
+                    if (r === role) delete cfg.hidToKey[hidName];
+                }
+                const hid = KeymapEngine.browserCodeToHID?.(code);
+                const name = hid === undefined ? null : KeymapEngine.hidCodeToName?.(hid);
+                if (name) cfg.hidToKey[name] = role;
+            }
+            effective = { ...json, behavior: { ...json.behavior, config: cfg } };
+        }
+        const expanded = KeymapEngine.decodeKeymap(effective);
         // chord 配列の hidToKey に載っている物理キーは**配列の領分**。ホストのモード切替
         // （変換=IME ON 等）より優先してエンジンへ流す。NICOLA JIS の親指シフト
         // （無変換/変換）がホストのモード切替に食われて効かなかった事故の対策。
-        const hidToKey = json.behavior?.config?.hidToKey ?? {};
+        const hidToKey = effective.behavior?.config?.hidToKey ?? {};
         for (const name of Object.keys(hidToKey)) {
             const code = KeymapEngine.hidNameToBrowserCode?.(name);
             if (code) this.chordCodes.add(code);
@@ -5086,7 +5132,7 @@ class ReportModal extends Modal {
 
 module.exports = class HechimaProbePlugin extends Plugin {
     async onload() {
-        this.settings = Object.assign({ keymapId: "builtin_romaji" }, await this.loadData());
+        this.settings = Object.assign({ keymapId: "builtin_romaji", roleKeys: {} }, await this.loadData());
         // 0.3.0 までの既定は romaji_jis（JSON）だった。内蔵ローマ字にしか無い機能
         // （句読点の即時確定・BS 後の pending 復帰）があるため、旧既定のままの設定は
         // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
@@ -5222,6 +5268,15 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    /** 現在の設定で配列を張り直す。失敗しても入力を殺さない */
+    applyKeymap() {
+        try {
+            this.ime.setKeymap(this.settings.keymapId);
+        } catch (e) {
+            new Notice(`hechima: 配列を適用できない — ${String(e?.message ?? e)}`);
+        }
     }
 
     onunload() {
@@ -5823,6 +5878,29 @@ module.exports = class HechimaProbePlugin extends Plugin {
     }
 };
 
+/** 役の表示名。JSON に出てくる役名をそのまま出すと分かりにくいので */
+const ROLE_LABELS = {
+    leftThumb: "左親指シフト",
+    rightThumb: "右親指シフト",
+    space: "シフトキー（SandS）",
+};
+
+/** よく使う候補。押して割り当てるのが本線だが、OS に奪われるキーは押せないので選択肢も出す */
+const ROLE_CHOICES = [
+    ["", "配列の既定にまかせる"],
+    ["Space", "Space"],
+    ["NonConvert", "無変換（iPad では届きません）"],
+    ["Convert", "変換（iPad では届きません）"],
+    ["Lang2", "英数（iPad では届きません）"],
+    ["Lang1", "かな（iPad では届きません）"],
+    ["AltLeft", "左 Alt / Option"],
+    ["AltRight", "右 Alt / Option"],
+    ["MetaLeft", "左 Command / Win（ショートカットと衝突します）"],
+    ["MetaRight", "右 Command / Win（ショートカットと衝突します）"],
+    ["ControlRight", "右 Ctrl"],
+    ["ShiftRight", "右 Shift"],
+];
+
 class HechimaSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
@@ -5844,13 +5922,42 @@ class HechimaSettingTab extends PluginSettingTab {
                 d.onChange(async (id) => {
                     this.plugin.settings.keymapId = id;
                     await this.plugin.saveSettings();
-                    try {
-                        this.plugin.ime.setKeymap(id);
-                    } catch (e) {
-                        new Notice(`配列を切り替えられない: ${String(e?.message ?? e)}`);
-                    }
+                    this.plugin.applyKeymap();
+                    this.display(); // 配列が変わると役の顔ぶれも変わる
                 });
             });
+
+        // 役 → 物理キーの割り当て（この配列がシフトを使うときだけ出す）
+        const roles = this.plugin.ime.shiftRoles();
+        if (roles.length) {
+            containerEl.createEl("h4", { text: "シフトキーの割り当て" });
+            const desc = containerEl.createEl("p", {
+                text:
+                    "配列が決めるのは「左親指」などの役だけで、それをどの物理キーに置くかは" +
+                    "キーボードと OS 次第です。iPadOS は 英数 / かな / 無変換 / 変換 を" +
+                    "入力ソース切替に予約していてアプリに届きません（ChromeOS では届きます）。",
+            });
+            desc.style.color = "var(--text-muted)";
+            desc.style.fontSize = "var(--font-ui-smaller, .85em)";
+            for (const role of roles) {
+                const current = this.plugin.ime.roleCode(role);
+                new Setting(containerEl)
+                    .setName(ROLE_LABELS[role] ?? role)
+                    .setDesc(`いま: ${current ?? "（未割当）"}`)
+                    .addDropdown((d) => {
+                        for (const [code, label] of ROLE_CHOICES) d.addOption(code, label);
+                        d.setValue(this.plugin.settings.roleKeys?.[role] ?? "");
+                        d.onChange(async (code) => {
+                            this.plugin.settings.roleKeys ??= {};
+                            if (code) this.plugin.settings.roleKeys[role] = code;
+                            else delete this.plugin.settings.roleKeys[role];
+                            await this.plugin.saveSettings();
+                            this.plugin.applyKeymap();
+                            this.display(); // 「いま:」を更新
+                        });
+                    });
+            }
+        }
 
         // vault 側の配列（Phase 2.5）
         new Setting(containerEl)
