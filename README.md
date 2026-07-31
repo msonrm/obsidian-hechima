@@ -14,7 +14,7 @@ Android の実機で動作を確認しています。
 | | |
 |---|---|
 | **6 方式の配列** | ローマ字、Colemak、AZIK、月配列2-263、薙刀式 v18、NICOLA（それぞれ JIS / US 版） |
-| **自前の配列を足せる** | `<vault>/hechima/keymaps/*.json` に置くと一覧に出る（[実例](https://luffa-lang-labo.dev/vendor/keymaps/naginata_jis.json)。保存した瞬間に反映されます） |
+| **自前の配列を足せる** | `<vault>/hechima/keymaps/*.json` に置くと一覧に出る。保存した瞬間に反映されます（[フォーマット仕様](https://github.com/msonrm/KeyLogicKit/blob/main/docs/keymap-format.md) / [実例](https://luffa-lang-labo.dev/vendor/keymaps/naginata_jis.json)） |
 | **同時打鍵** | 薙刀式の相互シフト、NICOLA の親指シフト（`keyup` が届く環境のみ・下記） |
 | **文節の移動・伸縮** | `←` `→` / `Shift+←` `Shift+→` |
 | **確定アンドゥ・再変換** | 確定直後の取り消し、選択範囲の読みへの巻き戻し |
