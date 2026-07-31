@@ -5015,11 +5015,13 @@ class HechimaIME {
 
 
 // ==== src/probe.js ====
-// hechima probe — Obsidian で mozc wasm が起動して変換できるかだけを測る偵察プラグイン。
+// hechima — Obsidian のエディタで動く日本語入力（IME）。
 //
-// 目的は一点: 「Obsidian iOS（iPad）でこのプラグインが hechima の変換エンジンを動かせるか」。
-// ここが割れると Obsidian 版 hechima の設計が根本から変わる（desktop-only に落ちるか、
-// タブレット両手親指入力と合流できるか）ので、入力層を作る前に先に測る。
+// mozc wasm・配列エンジン・変換セッション層を main.js 1 枚に結合し、システム IME に
+// 依存せずに日本語を入力する。id が `hechima-probe` のままなのは、変えると既存インストールが
+// 孤立するため（偵察〈reconnaissance〉として始めた名残）。
+//
+// 偵察コマンドは今も残してある。作る前に実機で測るために書いたもので、不具合の切り分けに使う。
 //
 // 設計の要点 —— URL と戦わずバイトを食わせる:
 //   Obsidian mobile は WKWebView + Capacitor で、プラグインのファイルは vault の中にある。
@@ -5155,58 +5157,50 @@ module.exports = class HechimaProbePlugin extends Plugin {
         this.captureStartedAt = 0;
         this.docLenAtStart = 0;
 
-        this.addRibbonIcon("languages", "hechima 偵察を実行", () => this.run());
+        // **リボンは日本語入力の ON / OFF。** エディタから一番近いボタンなので、
+        // 常用する機能を置く（偵察はコマンドパレットから呼べばいい）。
+        this.ribbonEl = this.addRibbonIcon("languages", "日本語入力の ON / OFF", () =>
+            void this.ime.toggle()
+        );
+        this.addCommand({
+            id: "toggle-ime",
+            name: "日本語入力の ON / OFF",
+            callback: () => void this.ime.toggle(),
+        });
+        this.addCommand({
+            id: "reconvert",
+            name: "再変換（選択したテキストを変換し直す）",
+            editorCallback: () => void this.ime.reconvertSelection(),
+        });
+
+        // --- 以下は診断用。不具合の切り分けに使う ---
         this.addCommand({
             id: "run",
-            name: "エンジン偵察を実行（wasm 起動 → 変換）",
+            name: "変換エンジンの自己診断（起動 → 辞書 → 変換）",
             callback: () => this.run(),
-        });
-        this.addCommand({
-            id: "reset",
-            name: "エンジンを破棄して初期化から測り直す",
-            callback: () => {
-                this.engine.dispose();
-                this.fep = null;
-                new Notice("破棄しました。次の実行で初期化から測ります");
-            },
-        });
-        this.addCommand({
-            id: "wiring",
-            name: "配線を確認（結合した 3 本の版）",
-            callback: () => {
-                const v = HechimaProbePlugin.__vendor;
-                new ReportModal(
-                    this.app,
-                    "配線",
-                    [
-                        `HechimaModule  ${typeof v.HechimaModule === "function" ? "OK（wasm factory）" : "見つからない"}`,
-                        `KeymapEngine   ${v.KeymapEngine?.version ? `v${v.KeymapEngine.version}` : "見つからない"}`,
-                        `Hechima        ${v.Hechima?.version ? `v${v.Hechima.version}` : "見つからない"}`,
-                        `CodeMirror     ${cmView && cmState ? "OK" : `取得できない: ${cmLoadError ?? "不明"}`}`,
-                    ].join("\n")
-                ).open();
-            },
-        });
-        this.addCommand({
-            id: "test-conversion",
-            name: "テスト変換（キーボードを使わずセッション層を通す）",
-            editorCallback: (editor) => void this.testConversion(editor),
         });
         this.addCommand({
             id: "toggle-key-capture",
             name: "キー入力の偵察: 開始 / 停止",
             editorCallback: (editor, view) => this.toggleCapture(view),
         });
-
         this.addCommand({
-            id: "reconvert",
-            name: "再変換（選択したテキストを変換し直す）",
-            editorCallback: () => void this.ime.reconvertSelection(),
-        });
-        this.addCommand({
-            id: "toggle-ime",
-            name: "日本語入力の ON / OFF",
-            callback: () => void this.ime.toggle(),
+            id: "wiring",
+            name: "バージョンを表示（不具合報告用）",
+            callback: () => {
+                const v = HechimaProbePlugin.__vendor;
+                new ReportModal(
+                    this.app,
+                    "バージョン",
+                    [
+                        `プラグイン     v${this.manifest?.version ?? "?"}`,
+                        `変換エンジン   ${typeof v.HechimaModule === "function" ? "OK（mozc wasm）" : "見つからない"}`,
+                        `配列エンジン   ${v.KeymapEngine?.version ? `v${v.KeymapEngine.version}` : "見つからない"}`,
+                        `セッション層   ${v.Hechima?.version ? `v${v.Hechima.version}` : "見つからない"}`,
+                        `CodeMirror     ${cmView && cmState ? "OK" : `取得できない: ${cmLoadError ?? "不明"}`}`,
+                    ].join("\n")
+                ).open();
+            },
         });
 
         // ステータスバー（モバイルには出ないが、あっても害はない）
@@ -5245,6 +5239,15 @@ module.exports = class HechimaProbePlugin extends Plugin {
     }
 
     renderStatus() {
+        // リボンにも状態を出す。**iPad にはステータスバーが無い**ので、
+        // 常に見えている ON/OFF はこれとキャレット下のモードバッジだけになる。
+        if (this.ribbonEl) {
+            this.ribbonEl.toggleClass?.("is-active", this.ime.active);
+            this.ribbonEl.setAttribute?.(
+                "aria-label",
+                this.ime.active ? `日本語入力 ON — ${this.ime.keymapName()}` : "日本語入力 OFF"
+            );
+        }
         if (!this.statusEl) return;
         this.statusEl.setText(this.ime.active ? `あ ${this.ime.keymapName()}` : "A");
         this.statusEl.title = this.ime.active
@@ -5339,35 +5342,6 @@ module.exports = class HechimaProbePlugin extends Plugin {
         });
         this.fep.setActive(true);
         return this.fep;
-    }
-
-    /**
-     * Phase 1 の完了条件。キーボードに一切触れず、
-     * かな投入 → 変換 → 確定 が本文に入るところまでを通す。
-     */
-    async testConversion(editor) {
-        const notice = new Notice("hechima: セッションを起動中…", 0);
-        try {
-            const fep = await this.session();
-            fep.reset();
-            if (!fep.insertKana(SAMPLE_YOMI)) throw new Error("insertKana が受け付けられなかった");
-            // 変換と確定は合成した打鍵で行う。KeyTap は KeyboardEvent 互換の最小形なので、
-            // Phase 2 で本物のイベントに差し替えても同じ経路を通る。
-            if (!fep.feed({ key: " ", code: "Space" })) throw new Error("変換（Space）が届かなかった");
-            await new Promise((res) => setTimeout(res, 0)); // convert は非同期
-            const before = editor?.getValue?.().length ?? 0;
-            fep.feed({ key: "Enter", code: "Enter" });
-            const after = editor?.getValue?.().length ?? 0;
-            notice.hide();
-            new Notice(
-                after > before
-                    ? `hechima: 確定しました（+${after - before} 文字）`
-                    : "hechima: 確定が本文に入らなかった"
-            );
-        } catch (e) {
-            notice.hide();
-            new Notice(`hechima: 失敗 — ${String(e?.message ?? e)}`);
-        }
     }
 
     // ------------------------------------------------------------------
@@ -5996,10 +5970,13 @@ class HechimaSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("配列")
-            .setDesc("打鍵をかなに変換する規則。同梱分から選ぶ（vault の配列は Phase 2.5）")
+            .setDesc("打鍵をかなに変換する規則")
             .addDropdown((d) => {
+                // 名前だけ出す。同時打鍵かどうかは配列名で分かるし、同梱か自分で置いたかも
+                // 置き場所を見れば分かる。**例外は vault が同梱を上書きしている場合**で、
+                // 名前が同じままどちらが効いているか分からなくなるので、そこだけ注記する。
                 for (const k of this.plugin.ime.catalog()) {
-                    d.addOption(k.id, `${k.name}（${k.behavior === "chord" ? "同時打鍵" : "逐次"}・${k.origin}）`);
+                    d.addOption(k.id, k.origin === "vault（同梱を上書き）" ? `${k.name}（vault で上書き）` : k.name);
                 }
                 d.setValue(this.plugin.settings.keymapId);
                 d.onChange(async (id) => {
