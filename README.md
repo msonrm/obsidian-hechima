@@ -30,7 +30,7 @@ Android の実機で動作を確認しています。
 `msonrm/obsidian-hechima` を指定します。**iPad 単体で完結します。**
 
 手で入れるなら `main.js` と `manifest.json` を
-`<vault>/.obsidian/plugins/hechima-probe/` へ。
+`<vault>/.obsidian/plugins/hechima/` へ。
 
 設定 → コミュニティプラグイン → 制限モードを解除 → `hechima` を有効化。
 
@@ -41,13 +41,22 @@ Android の実機で動作を確認しています。
 入れないので、Obsidian Sync が 18.9 MB を運ぶこともありません。
 
 自動取得を待ちたくない / オフラインで入れたい場合は、次の 2 つを保存して
-**vault 直下に `hechima` フォルダ**を作り、そこへ置いてください。
+**vault 直下の `hechima` フォルダ**へ置いてください。
 
 - https://luffa-lang-labo.dev/vendor/hechima-wasm/hechima-wasm.wasm
 - https://luffa-lang-labo.dev/vendor/hechima-wasm/mozc.data
 
 vault 直下も見るようにしてあるのは iOS の都合で、**Files アプリがドットで始まるフォルダを
 見せない**ため、`.obsidian/` 配下へ 18.9 MB を手で置く経路が無いからです。
+
+同じ理由で、**学習とユーザー辞書も `<vault>/hechima/learning/` に置いています**（0.11.0 から）。
+iPad の Files アプリからそのまま見えますし、退避もできます。
+
+| | 場所 |
+|---|---|
+| 配列 JSON | `<vault>/hechima/keymaps/*.json` |
+| 学習・ユーザー辞書 | `<vault>/hechima/learning/` |
+| プラグイン本体 | `<vault>/.obsidian/plugins/hechima/` |
 
 ### 3. 使う
 

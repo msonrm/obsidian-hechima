@@ -3799,6 +3799,19 @@ const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 /** 学習の永続化対象。辞書（18.9MB）と違い数十 KB なので vault に置いてよい */
 const PERSIST_FILES = ["segment.db", "boundary.db", "user_dictionary.db"];
 
+/**
+ * 学習とユーザー辞書の置き場所。**vault の見える場所に置く。**
+ *
+ * 0.10.1 までは `.obsidian/plugins/<id>/learning/` に置いていたが、**iOS の Files アプリは
+ * ドットで始まるフォルダを見せない**ので、iPad から辞書を見ることも退避することもできなかった
+ * （実機報告）。配列 JSON の `hechima/keymaps/` と同じ親にすれば、hechima のものが
+ * 1 か所にまとまり、Files からも普通に見える。
+ */
+const LEARNING_DIR = "hechima/learning";
+
+/** 0.10.1 まで学習を置いていた場所。移行のためだけに見る */
+const LEGACY_PLUGIN_IDS = ["hechima-probe", "hechima"];
+
 /** 候補の取得数。候補窓の複数ページ分（既定の 9 だとページングが起きない） */
 const MAX_CANDS = 50;
 
@@ -3872,7 +3885,10 @@ class HechimaEngine {
                 return HechimaModule(cfg);
             });
 
-            await run("学習を復元", () => this.restoreLearning(mod));
+            await run("学習を復元", async () => {
+                await this.migrateLearning(); // 旧 .obsidian/plugins/<id>/learning/ から拾う
+                await this.restoreLearning(mod);
+            });
             await run("辞書を MEMFS に書く", () => { mod.FS.writeFile("/mozc.data", dict); });
             await run("hechima_init", () => {
                 const rc = mod.ccall("hechima_init", "number", ["string"], ["/mozc.data"]);
@@ -3901,7 +3917,41 @@ class HechimaEngine {
     // ---- 学習の永続化（vault 上。Obsidian Sync が端末間へ運ぶ） ----------
 
     learningDir() {
-        return `${this.manifest.dir}/learning`;
+        return LEARNING_DIR;
+    }
+
+    /**
+     * 0.10.1 までの置き場所（`.obsidian/plugins/<id>/learning/`）から拾い上げる。
+     * **新しい場所に無いものだけ**を運ぶので、何度走っても上書きしない。
+     * プラグイン id の改名（hechima-probe → hechima）もここで吸収する。
+     */
+    async migrateLearning() {
+        const adapter = this.app.vault.adapter;
+        const pluginsDir = this.manifest.dir.replace(/\/[^/]+$/, ""); // .obsidian/plugins
+        let moved = 0;
+        for (const name of PERSIST_FILES) {
+            const dest = `${LEARNING_DIR}/${name}`;
+            try {
+                if (await adapter.exists(dest)) continue;
+            } catch {
+                continue;
+            }
+            for (const id of LEGACY_PLUGIN_IDS) {
+                const src = `${pluginsDir}/${id}/learning/${name}`;
+                try {
+                    if (!(await adapter.exists(src))) continue;
+                    const buf = await adapter.readBinary(src);
+                    if (!buf.byteLength) continue;
+                    if (!(await adapter.exists(LEARNING_DIR))) await adapter.mkdir(LEARNING_DIR);
+                    await adapter.writeBinary(dest, buf);
+                    moved += 1;
+                    break;
+                } catch {
+                    // 読めない・書けないものは諦める（移行の失敗で起動を止めない）
+                }
+            }
+        }
+        return moved;
     }
 
     async restoreLearning(mod) {
@@ -5071,8 +5121,9 @@ class HechimaIME {
 // hechima — Obsidian のエディタで動く日本語入力（IME）。
 //
 // mozc wasm・配列エンジン・変換セッション層を main.js 1 枚に結合し、システム IME に
-// 依存せずに日本語を入力する。id が `hechima-probe` のままなのは、変えると既存インストールが
-// 孤立するため（偵察〈reconnaissance〉として始めた名残）。
+// 依存せずに日本語を入力する。**id は 0.11.0 で `hechima-probe` から `hechima` に改名した**
+// （probe は偵察〈reconnaissance〉として始めた名残。ストアに出すと id は永久固定になるので、
+// 使っている人が少ないうちに変えた）。旧 id からの設定と学習の引き継ぎコードが入っている。
 //
 // 偵察コマンドは今も残してある。作る前に実機で測るために書いたもので、不具合の切り分けに使う。
 //
@@ -5177,7 +5228,7 @@ class ReportModal extends Modal {
 
         const save = bar.createEl("button", { text: "vault に保存" });
         save.onclick = async () => {
-            const path = "hechima-probe-result.md";
+            const path = "hechima-probe-result.md"; // 偵察結果。名前は既存の運用に合わせて据え置き
             const body = `# hechima probe\n\n\`\`\`\n${this.text}\n\`\`\`\n`;
             await this.app.vault.adapter.write(path, body);
             new Notice(`${path} に保存しました`);
@@ -5348,8 +5399,43 @@ class UserDictModal extends Modal {
 }
 
 module.exports = class HechimaProbePlugin extends Plugin {
+    /**
+     * 設定の引き継ぎ。**id を hechima-probe → hechima に改名した（0.11.0）**ので、
+     * Obsidian からは別プラグインに見え、`loadData()` は空を返す。旧 id のフォルダに
+     * data.json が残っていればそれを読む。**新しい側に設定があればそちらが勝つ**ので、
+     * 一度でも設定を保存したあとは旧側を見に行かない。
+     */
+    async loadSettingsWithMigration() {
+        const own = await this.loadData();
+        if (own && Object.keys(own).length) return own;
+        const pluginsDir = this.manifest.dir.replace(/\/[^/]+$/, "");
+        try {
+            const raw = await this.app.vault.adapter.read(`${pluginsDir}/hechima-probe/data.json`);
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+                new Notice("hechima: 以前の設定を引き継ぎました");
+                return parsed;
+            }
+        } catch {
+            // 無い / 読めない / 壊れている。既定で始める
+        }
+        return {};
+    }
+
     async onload() {
-        this.settings = Object.assign({ keymapId: "builtin_romaji", roleKeys: {} }, await this.loadData());
+        this.settings = Object.assign(
+            { keymapId: "builtin_romaji", roleKeys: {} },
+            await this.loadSettingsWithMigration()
+        );
+        // **旧 id の版が同時に動いていないか。** 両方が有効だと 2 つの IME が打鍵を
+        // 奪い合い、原因の分からない挙動になる。id 改名（0.11.0）の後始末
+        if (this.manifest.id !== "hechima-probe" && this.app.plugins?.enabledPlugins?.has?.("hechima-probe")) {
+            new Notice(
+                "hechima: 旧版（hechima probe）が有効なままです。" +
+                    "設定 → コミュニティプラグイン から無効化してください",
+                0
+            );
+        }
         // 0.3.0 までの既定は romaji_jis（JSON）だった。内蔵ローマ字にしか無い機能
         // （句読点の即時確定・BS 後の pending 復帰）があるため、旧既定のままの設定は
         // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
