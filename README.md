@@ -1,85 +1,88 @@
 # 🧽 obsidian-hechima
 
-**Obsidian で [hechima](https://github.com/msonrm/hechima)（OS 非依存の Web 向け日本語入力スタック）を動かす試み。**
+**Obsidian のエディタで動く日本語入力（IME）。**
+[hechima](https://github.com/msonrm/hechima)（OS 非依存の Web 向け日本語入力スタック）を
+プラグインに内蔵しているので、**システムの IME に依存しません**。
 
-> **現在は偵察（reconnaissance）段階です。入力機能はまだありません。**
-> このプラグインが今できるのは「Obsidian の中で日本語入力を作れるか」を**実機で測ること**だけです。
-> 変換して遊べるものを探している方は、先に [へちま言語ラボ](https://luffa-lang-labo.dev) をどうぞ。
+変換エンジンは Mozc を WebAssembly にしたもの（`main.js` 同梱）。desktop / iPad /
+Android の実機で動作を確認しています。
 
-## なぜ偵察から始めるのか
+> 触って試すだけなら [へちま言語ラボ](https://luffa-lang-labo.dev) が早いです（インストール不要）。
 
-Obsidian 版を作るかどうかは、実装を書く前に決まってしまう問いが 2 つあります。どちらも
-机上では答えが出ず、実機でしか分かりません。特に **iOS（iPad）** が未知数です。
+## 何ができるか
 
-| 問い | 割れたときの帰結 |
+| | |
 |---|---|
-| **変換エンジン（mozc wasm）が起動して変換できるか** | 動かなければ Obsidian 版は成立しない。iOS だけ動かなければ desktop 専用になる |
-| **エディタが `keydown` と `keyup` を両方渡すか** | `keyup` が来ないと押下集合を作れず、薙刀式・新下駄のような同時打鍵系は**原理的に**載らない（逐次系だけになる） |
+| **13 種の配列** | ローマ字（QWERTY US/JIS・Colemak）、AZIK、月配列2-263、薙刀式 v18、NICOLA、**親指ぴゅん** |
+| **自前の配列を足せる** | vault に配列 JSON を置くと一覧に出る（[フォーマット](https://github.com/msonrm/logical-layout-labo)） |
+| **同時打鍵** | 薙刀式の相互シフト、NICOLA の親指シフト（`keyup` が届く環境のみ・下記） |
+| **文節の移動・伸縮** | `←` `→` / `Shift+←` `Shift+→` |
+| **確定アンドゥ・再変換** | 確定直後の取り消し、選択範囲の読みへの巻き戻し |
+| **学習** | 学習データは vault に置くので Obsidian Sync で端末間を渡る。リセットも設定から |
+| **親指キーの割り当て変更** | 設定で**押して割り当て**。OS が奪うキーはここにも届かないので、押しても反応しなければ「この端末では使えない」とその場で分かる |
 
-このプラグインは、この 2 つを 1 回の実機往復で測って結果を表示します。
+## 入れる
 
-## 使い方
+### 1. プラグイン
 
-### 1. 辞書と wasm を vault に置く
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) の「Add beta plugin」に
+`msonrm/obsidian-hechima` を指定します。**iPad 単体で完結します。**
 
-Safari / ブラウザで次の 2 つを保存し、**vault 直下に `hechima` フォルダ**を作って入れます。
+手で入れるなら `main.js` と `manifest.json` を
+`<vault>/.obsidian/plugins/hechima-probe/` へ。
 
-- https://luffa-lang-labo.dev/vendor/hechima-wasm/hechima-wasm.wasm （2.6 MB）
-- https://luffa-lang-labo.dev/vendor/hechima-wasm/mozc.data （18.9 MB）
+設定 → コミュニティプラグイン → 制限モードを解除 → `hechima` を有効化。
 
-```
-<vault>/
-  hechima/
-    hechima-wasm.wasm
-    mozc.data
-```
+### 2. 辞書
 
-> プラグインフォルダ側（`.obsidian/plugins/hechima-probe/`）に置いても読みます。
-> vault 直下も見るようにしてあるのは iOS の都合で、**Files アプリがドットで始まる
-> フォルダを見せない**ため、`.obsidian/` 配下に 18.9 MB を手で置く経路が無いからです。
+**初回に自動で取得します**（`hechima-wasm.wasm` 2.6 MB + 辞書 18.9 MB）。
+落としたものは IndexedDB に持つので、2 回目からは取りに行きません。vault には
+入れないので、Obsidian Sync が 18.9 MB を運ぶこともありません。
 
-### 2. プラグインを入れる
+自動取得を待ちたくない / オフラインで入れたい場合は、次の 2 つを保存して
+**vault 直下に `hechima` フォルダ**を作り、そこへ置いてください。
 
-**[BRAT](https://github.com/TfTHacker/obsidian42-brat) を使うと iPad 単体で完結します。**
-BRAT を入れて「Add beta plugin」に `msonrm/obsidian-hechima` を指定してください。
+- https://luffa-lang-labo.dev/vendor/hechima-wasm/hechima-wasm.wasm
+- https://luffa-lang-labo.dev/vendor/hechima-wasm/mozc.data
 
-手で入れる場合は `main.js` と `manifest.json` を
-`<vault>/.obsidian/plugins/hechima-probe/` に置きます。
+vault 直下も見るようにしてあるのは iOS の都合で、**Files アプリがドットで始まるフォルダを
+見せない**ため、`.obsidian/` 配下へ 18.9 MB を手で置く経路が無いからです。
 
-設定 → コミュニティプラグイン → 制限モードを解除 → `hechima probe` を有効化。
+### 3. 使う
 
-### 3. 測る
+リボンの言語アイコン、または設定の「日本語入力」で ON/OFF。
+配列は設定 → 「配列」から選びます。
 
-| コマンド | 測るもの |
-|---|---|
-| **エンジン偵察を実行**（リボンの言語アイコンでも可） | wasm 起動 → 変換 |
-| **キー入力の偵察: 開始 / 停止** | `keydown` / `keyup` / 抑止可否 / OS IME の干渉 |
+**iPad で外付けキーボードを使うときは、OS 側の入力ソースを英字（ABC）にしてください。**
+日本語入力のままだと OS の IME が先にキーを食います。
 
-結果はモーダルに出ます。**コピー**か **vault に保存**（`hechima-probe-result.md`）で持ち出せます。
+## 環境ごとの差 — 同時打鍵が載るかどうか
 
-うまくいくと、こう出ます。
+薙刀式や NICOLA のような同時打鍵系は、**エディタが `keyup` を返す環境でしか原理的に成立しません**。
+`keydown` しか来ないと「D を押しながら x」と「D を打ってから x」が同一のイベント列になり、
+近似ではなく区別そのものが不可能だからです。
 
-```
-== 初期化 ==
-OK    vault から hechima-wasm.wasm を読む — 28ms
-OK    vault から mozc.data を読む — 107ms
-OK    wasm をインスタンス化（wasmBinary 直渡し） — 80ms
-OK    hechima_init — 99ms
+| 環境 | 変換 | 同時打鍵 |
+|---|---|---|
+| desktop（Electron 版。Windows / Linux で確認） | OK | OK |
+| **iPad + 外付けキーボード** | OK | OK |
+| Android スマホ + Bluetooth キーボード | OK | **未対応**（実 `keyup` は届くので載る見込み。未配線） |
+| **ChromeOS の Android 版アプリ** | OK | **不可**（`keyup` が来ない。逐次系のみ） |
 
-== 変換 ==
-      きょうは → 今日は / きょうは / 教は
-      いいてんきですね → いい天気ですね / 良い天気ですね / イイ天気ですね
-OK    変換「きょうはいいてんきですね」 — 85ms
-OK    TZ 検証（「いま」の時刻候補が端末時刻と一致するか） — 10ms
-```
+### 親指キー（NICOLA / 親指ぴゅん）
 
-### キー入力の偵察について
+親指シフトの左右キーをどこに置くかは**環境の都合**で、配列の都合ではありません。
+OS が先に奪うキーがあるためです。
 
-記録中は打鍵を全部 `preventDefault` で握り潰すので、本文は汚れません。
+| キー | iPad | ChromeOS |
+|---|---|---|
+| スペース | 通る | 通る |
+| 無変換 / 変換 | **OS が奪う** | 通る（`英数` / `かな` として届く） |
+| Alt | 文字キーとの同時押しを**OS が奪う** | 通る |
 
-**iPad で外付けキーボードを使うときは、OS 側の入力ソースを英字（ABC）にしてから測ってください。**
-日本語入力のままだと OS の IME が先にキーを食い、`isComposing` が立ちます
-（そうなったら結果に WARN が出ます）。
+**iPad で親指に使えるのは実質スペースだけ**なので、同梱の **親指ぴゅん(JIS)** は
+右親指シフトをスペースに置いてあります（DOS/V 用エミュレータ「親指ぴゅん」に倣った割り当て）。
+設定の「押して割り当て」で自分の環境に合わせて変えられます。
 
 ## 設計メモ — URL と戦わずバイトを食わせる
 
@@ -87,22 +90,32 @@ Obsidian mobile は WKWebView + Capacitor で、プラグインのファイル�
 emscripten の既定経路（`locateFile` → `fetch` / `instantiateStreaming`）を使うと、結果が
 「この環境でどの URL スキームが通るか」という**別の問題**に左右されてしまいます。
 
-そこで `.wasm` も `mozc.data` も vault アダプタで**バイト列として読み**、`wasmBinary` と
-`FS.writeFile` で直接渡しています。URL 解決は経路に入りません。
+そこで `.wasm` も辞書も**バイト列として読み**、`wasmBinary` と `FS.writeFile` で直接渡しています。
+URL 解決は経路に入りません。
 
 Worker も使っていません。hechima-wasm は単スレッドビルド（`SharedArrayBuffer` 非依存 =
-COOP/COEP 不要）なので、メインスレッドで完結します。Worker は「メインスレッドで動く」が
-確認できた後の最適化であって、偵察で同時に賭ける変数ではないからです。
+COOP/COEP 不要）なので、メインスレッドで完結します（init 約 100〜200ms）。
 
-## この先
+未確定文字列は `Decoration.widget` で描いていて、**文書には書きません**。Obsidian は
+自動保存するので、実テキストとして挿入すると打ちかけのかなが `.md` に書かれてしまいます。
 
-両方の偵察が緑なら、未確定文字列の装飾（CodeMirror の `Decoration`）と変換候補
-（`showTooltip`）を載せて、[hechima](https://github.com/msonrm/hechima) の
-配列エンジンと変換セッション層を配線します。進捗はここに出ます。
+## 偵察コマンド
+
+作る前に実機で測るために書いたもので、今も残してあります。不具合の切り分けに使えます。
+
+| コマンド | 測るもの |
+|---|---|
+| **エンジン偵察を実行** | wasm 起動 → 辞書読み込み → 変換 → タイムゾーン |
+| **キー入力の偵察: 開始 / 停止** | `keydown` / `keyup` / 抑止可否 / OS IME の干渉 |
+
+結果はモーダルに出ます。コピーか vault への保存（`hechima-probe-result.md`）で持ち出せます。
 
 ## ライセンス
 
 自作部分は [MIT](LICENSE)（Copyright (c) 2026 msonrm）。
 
-`main.js` には Mozc 由来のビルド成果物（Emscripten の glue コード）が含まれます —
-**powered by Mozc**。帰属表示は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照。
+`main.js` には Mozc 由来のビルド成果物が含まれます — **powered by Mozc**。
+帰属表示は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照。
+
+source の正典は [msonrm/logical-layout-labo](https://github.com/msonrm/logical-layout-labo) の
+`obsidian-plugin/` です。このリポジトリは BRAT が読むための成果物置き場です。
