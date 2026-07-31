@@ -3885,10 +3885,7 @@ class HechimaEngine {
                 return HechimaModule(cfg);
             });
 
-            await run("学習を復元", async () => {
-                await this.migrateLearning(); // 旧 .obsidian/plugins/<id>/learning/ から拾う
-                await this.restoreLearning(mod);
-            });
+            await run("学習を復元", () => this.restoreLearning(mod));
             await run("辞書を MEMFS に書く", () => { mod.FS.writeFile("/mozc.data", dict); });
             await run("hechima_init", () => {
                 const rc = mod.ccall("hechima_init", "number", ["string"], ["/mozc.data"]);
@@ -3922,6 +3919,10 @@ class HechimaEngine {
 
     /**
      * 0.10.1 までの置き場所（`.obsidian/plugins/<id>/learning/`）から拾い上げる。
+     *
+     * **呼ぶのは onload。エンジンの起動時ではない。** 起動時にすると「新版を入れたが
+     * まだ日本語入力を ON にしていない」状態で旧フォルダを消した人の学習と辞書が消える。
+     * 有効化しただけで運ばれる、が満たすべき保証。
      * **新しい場所に無いものだけ**を運ぶので、何度走っても上書きしない。
      * プラグイン id の改名（hechima-probe → hechima）もここで吸収する。
      */
@@ -5441,6 +5442,11 @@ module.exports = class HechimaProbePlugin extends Plugin {
         // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
         if (this.settings.keymapId === "romaji_jis") this.settings.keymapId = "builtin_romaji";
         this.engine = new HechimaEngine(this.app, this.manifest);
+        // **旧フォルダからの引き継ぎは、有効化した時点で終わらせる。** エンジンの起動を
+        // 待つと「入れたがまだ日本語入力を ON にしていない」人が旧フォルダを消したときに
+        // 学習と辞書を失う。数回の exists で済むので onload に置いて構わない
+        const moved = await this.engine.migrateLearning();
+        if (moved) new Notice(`hechima: 以前の学習とユーザー辞書を引き継ぎました（${moved} 件）`);
         // 初回だけ辞書のダウンロードで数十秒かかる。黙って止まったように見えないようにする
         this.engine.onProgress = (msg) => {
             this.dlNotice?.hide();
