@@ -6080,20 +6080,24 @@ const ROLE_LABELS = {
 };
 
 /** よく使う候補。押して割り当てるのが本線だが、OS に奪われるキーは押せないので選択肢も出す */
+// **ラベルは短く保つ。** 注意書きを選択肢に入れるとプルダウンの横幅がそれに引きずられ、
+// 左側の項目名が潰れて読めなくなる（iPad で実機報告）。注意は選んだものについてだけ
+// 説明文へ出す（3 列目）。
 const ROLE_CHOICES = [
-    ["", "配列の既定にまかせる"],
-    ["Space", "Space"],
-    ["NonConvert", "無変換（iPad では届きません）"],
-    ["Convert", "変換（iPad では届きません）"],
-    ["Lang2", "英数（iPad では届きません）"],
-    ["Lang1", "かな（iPad では届きません）"],
-    ["AltLeft", "左 Alt / Option"],
-    ["AltRight", "右 Alt / Option"],
-    ["MetaLeft", "左 Command / Win（ショートカットと衝突します）"],
-    ["MetaRight", "右 Command / Win（ショートカットと衝突します）"],
-    ["ControlRight", "右 Ctrl"],
-    ["ShiftRight", "右 Shift"],
+    ["", "配列の既定にまかせる", ""],
+    ["Space", "Space", ""],
+    ["NonConvert", "無変換", "iPad では届きません"],
+    ["Convert", "変換", "iPad では届きません"],
+    ["Lang2", "英数", "iPad では届きません"],
+    ["Lang1", "かな", "iPad では届きません"],
+    ["AltLeft", "左 Alt / Option", "iPad では文字キーとの同時押しを OS が奪います"],
+    ["AltRight", "右 Alt / Option", "iPad では文字キーとの同時押しを OS が奪います"],
+    ["MetaLeft", "左 Command / Win", "ショートカットと衝突します"],
+    ["MetaRight", "右 Command / Win", "ショートカットと衝突します"],
+    ["ControlRight", "右 Ctrl", ""],
+    ["ShiftRight", "右 Shift", ""],
 ];
+const ROLE_NOTE = new Map(ROLE_CHOICES.map(([code, , note]) => [code, note]));
 
 class HechimaSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
@@ -6186,7 +6190,11 @@ class HechimaSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("配列")
-            .setDesc("打鍵をかなに変換する規則")
+            .setDesc(
+                "打鍵をかなに変換する規則。" +
+                    `vault の ${VAULT_KEYMAP_DIR}/*.json も一覧に加わります` +
+                    "（同じ id なら vault が優先。保存した瞬間に反映されます）"
+            )
             .addDropdown((d) => {
                 // 名前だけ出す。同時打鍵かどうかは配列名で分かるし、同梱か自分で置いたかも
                 // 置き場所を見れば分かる。**例外は vault が同梱を上書きしている場合**で、
@@ -6203,6 +6211,23 @@ class HechimaSettingTab extends PluginSettingTab {
                 });
             });
 
+        // **何を追加したのかがその場で分かるように、名前を出す。** 件数だけでは
+        // 「入ったのか / どれが入ったのか」が分からない（iPad で実機報告）
+        const vaultNames = [...this.plugin.ime.vaultKeymaps.values()].map((j, i) => j?.name ?? `#${i + 1}`);
+        const vaultLine = containerEl.createEl("p", {
+            text: vaultNames.length
+                ? `vault から ${vaultNames.length} 件: ${vaultNames.join("、")}`
+                : `vault の配列はまだありません（${VAULT_KEYMAP_DIR}/ に JSON を置いてください）`,
+        });
+        vaultLine.style.color = "var(--text-muted)";
+        vaultLine.style.fontSize = "var(--font-ui-smaller, .85em)";
+        vaultLine.style.marginTop = "-6px";
+        for (const err of this.plugin.ime.keymapErrors) {
+            const e = containerEl.createEl("p", { text: `読めません — ${err}` });
+            e.style.color = "var(--text-error)";
+            e.style.fontSize = "var(--font-ui-smaller, .85em)";
+        }
+
         // 役 → 物理キーの割り当て（この配列がシフトを使うときだけ出す）
         const roles = this.plugin.ime.shiftRoles();
         if (roles.length) {
@@ -6218,9 +6243,12 @@ class HechimaSettingTab extends PluginSettingTab {
             desc.style.fontSize = "var(--font-ui-smaller, .85em)";
             for (const role of roles) {
                 const current = this.plugin.ime.roleCode(role);
+                // 注意書きは**選ばれているものについてだけ**ここに出す。選択肢に入れると
+                // プルダウンの横幅が引きずられ、左の項目名が潰れる（iPad で実機報告）
+                const note = ROLE_NOTE.get(this.plugin.settings.roleKeys?.[role] ?? "") || "";
                 new Setting(containerEl)
                     .setName(ROLE_LABELS[role] ?? role)
-                    .setDesc(`いま: ${current ?? "（未割当）"}`)
+                    .setDesc(`いま: ${current ?? "（未割当）"}${note ? ` — ${note}` : ""}`)
                     // **押して割り当てる**のが本線。押せないキー（OS に奪われている）は
                     // そもそも使えないキーなので、この UI 自体が実機の可用性テストになる
                     .addButton((b) => {
@@ -6237,25 +6265,15 @@ class HechimaSettingTab extends PluginSettingTab {
             }
         }
 
-        // vault 側の配列（Phase 2.5）
-        new Setting(containerEl)
-            .setName("vault の配列")
-            .setDesc(
-                `${VAULT_KEYMAP_DIR}/*.json を置くと一覧に加わります。` +
-                    "同じ id なら同梱より vault が優先され、保存した瞬間に反映されます。"
-            );
-        const vaultCount = this.plugin.ime.vaultKeymaps.size;
-        containerEl.createEl("p", {
-            text: vaultCount ? `読み込み済み: ${vaultCount} 件` : "まだ置かれていません",
-        });
-        for (const err of this.plugin.ime.keymapErrors) {
-            const p = containerEl.createEl("p", { text: `読めません — ${err}` });
-            p.style.color = "var(--text-error)";
-        }
-
+        // **置き場所を出す。** vault の中にあるファイルなので、直接見たり退避したりできる
+        // ことが分かるべき（iPad で実機報告）
+        const learnDir = this.plugin.engine.learningDir();
         new Setting(containerEl)
             .setName("ユーザー辞書")
-            .setDesc("変換できない語を登録します。学習と同じく vault に置くので端末間で同期します")
+            .setDesc(
+                "変換できない語を登録します。学習と同じく vault に置くので端末間で同期します。" +
+                    `実体は ${learnDir}/user_dictionary.db`
+            )
             .addButton((b) => {
                 b.setButtonText("開く");
                 b.onClick(() => new UserDictModal(this.app, this.plugin).open());
@@ -6263,7 +6281,10 @@ class HechimaSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("学習をリセット")
-            .setDesc("変換の学習（候補の並び・文節区切り）を消します。ユーザー辞書は消えません")
+            .setDesc(
+                "変換の学習（候補の並び・文節区切り）を消します。ユーザー辞書は消えません。" +
+                    `対象は ${learnDir}/ の segment.db と boundary.db`
+            )
             .addButton((b) => {
                 b.setButtonText("リセット");
                 b.onClick(async () => {
