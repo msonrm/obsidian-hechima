@@ -1180,12 +1180,13 @@ var KeymapEngine = (function () {
 		}
 		const shiftKeys = /* @__PURE__ */ new Set();
 		const shiftSingleTapActions = /* @__PURE__ */ new Map();
+		const spaceRole = hidToChordKey.get(HID.SPACE);
 		for (const sk of config.shiftKeys) {
 			shiftKeys.add(sk.key);
 			if (sk.singleTapAction) {
 				const action = parseSpecialAction(sk.singleTapAction);
 				if (action) shiftSingleTapActions.set(sk.key, action);
-			}
+			} else if (sk.key === spaceRole) shiftSingleTapActions.set(sk.key, { type: "convert" });
 		}
 		let englishLookupTable = null;
 		if (config.englishLookupTable) {
@@ -1219,7 +1220,7 @@ var KeymapEngine = (function () {
 	}
 	//#endregion
 	//#region src/engine/version.ts
-	const ENGINE_VERSION = "1.7.0";
+	const ENGINE_VERSION = "1.8.0";
 	//#endregion
 	//#region src/engine/key-router.ts
 	/** Route a KeyEvent to a KeyAction based on the expanded keymap */

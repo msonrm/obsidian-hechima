@@ -1,7 +1,7 @@
 {
   "id": "hechima-probe",
   "name": "hechima (Japanese IME)",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "minAppVersion": "1.4.0",
   "description": "Obsidian のエディタで動く日本語入力（IME）。mozc wasm をプラグインに内蔵し、システム IME に依存せずローマ字・親指シフト・同時打鍵など 12 種の配列で入力できる。",
   "author": "msonrm",
