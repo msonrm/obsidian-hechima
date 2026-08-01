@@ -310,6 +310,480 @@ var KeymapEngine = (function () {
 		const hid = NAME_TO_HID[name];
 		return hid !== void 0 ? HID_TO_BROWSER[hid] : void 0;
 	}
+	const HID_TO_US_LEGEND = {
+		[HID.A]: "a",
+		[HID.B]: "b",
+		[HID.C]: "c",
+		[HID.D]: "d",
+		[HID.E]: "e",
+		[HID.F]: "f",
+		[HID.G]: "g",
+		[HID.H]: "h",
+		[HID.I]: "i",
+		[HID.J]: "j",
+		[HID.K]: "k",
+		[HID.L]: "l",
+		[HID.M]: "m",
+		[HID.N]: "n",
+		[HID.O]: "o",
+		[HID.P]: "p",
+		[HID.Q]: "q",
+		[HID.R]: "r",
+		[HID.S]: "s",
+		[HID.T]: "t",
+		[HID.U]: "u",
+		[HID.V]: "v",
+		[HID.W]: "w",
+		[HID.X]: "x",
+		[HID.Y]: "y",
+		[HID.Z]: "z",
+		[HID.DIGIT_1]: "1",
+		[HID.DIGIT_2]: "2",
+		[HID.DIGIT_3]: "3",
+		[HID.DIGIT_4]: "4",
+		[HID.DIGIT_5]: "5",
+		[HID.DIGIT_6]: "6",
+		[HID.DIGIT_7]: "7",
+		[HID.DIGIT_8]: "8",
+		[HID.DIGIT_9]: "9",
+		[HID.DIGIT_0]: "0",
+		[HID.HYPHEN]: "-",
+		[HID.EQUAL]: "=",
+		[HID.BRACKET_LEFT]: "[",
+		[HID.BRACKET_RIGHT]: "]",
+		[HID.BACKSLASH]: "\\",
+		[HID.SEMICOLON]: ";",
+		[HID.QUOTE]: "'",
+		[HID.BACKQUOTE]: "`",
+		[HID.COMMA]: ",",
+		[HID.PERIOD]: ".",
+		[HID.SLASH]: "/"
+	};
+	/** HID コード → US 刻印の 1 文字。表に無ければ undefined */
+	function hidToUsLegend(code) {
+		return HID_TO_US_LEGEND[code];
+	}
+	//#endregion
+	//#region src/engine/diagnostics.ts
+	/** 診断を配列に溜めるだけの sink（テストと、まとめて受け取りたいホスト向け） */
+	function collectDiagnostics() {
+		const items = [];
+		return {
+			sink: (d) => items.push(d),
+			items
+		};
+	}
+	const REASON_TO_CODE = {
+		"not-allowed-here": "action-not-allowed-here",
+		unsupported: "action-unsupported",
+		unknown: "action-unknown",
+		extension: "action-extension-ignored",
+		"bad-param": "action-bad-param"
+	};
+	const REASON_TO_MESSAGE = {
+		"not-allowed-here": "この面では書けないアクションです",
+		unsupported: "このランタイムに実装が無いアクションです",
+		unknown: "未知のアクション名です",
+		extension: "アプリ固有アクション（x-）なので無視しました",
+		"bad-param": "アクションのパラメータが不正です"
+	};
+	/** parseKeyActionResult の reason を診断に変換して報告する */
+	function reportActionRejection(sink, reason, where, key, value) {
+		if (!sink) return;
+		sink({
+			code: REASON_TO_CODE[reason],
+			message: `${REASON_TO_MESSAGE[reason]}: "${value}"（${where} の ${key}）`,
+			where,
+			key,
+			value
+		});
+	}
+	//#endregion
+	//#region src/engine/gamepad-kana-table.ts
+	/** LT後置シフトマップ: 子音かな→拗音, 母音→小書き */
+	const YOUON_POSTSHIFT_MAP = /* @__PURE__ */ new Map([
+		["あ", "ぁ"],
+		["い", "ぃ"],
+		["う", "ぅ"],
+		["え", "ぇ"],
+		["お", "ぉ"],
+		["や", "ゃ"],
+		["ゆ", "ゅ"],
+		["よ", "ょ"],
+		["わ", "ゎ"],
+		["か", "きゃ"],
+		["く", "きゅ"],
+		["こ", "きょ"],
+		["さ", "しゃ"],
+		["す", "しゅ"],
+		["そ", "しょ"],
+		["た", "ちゃ"],
+		["つ", "ちゅ"],
+		["と", "ちょ"],
+		["な", "にゃ"],
+		["ぬ", "にゅ"],
+		["の", "にょ"],
+		["は", "ひゃ"],
+		["ふ", "ひゅ"],
+		["ほ", "ひょ"],
+		["ま", "みゃ"],
+		["む", "みゅ"],
+		["も", "みょ"],
+		["ら", "りゃ"],
+		["る", "りゅ"],
+		["ろ", "りょ"],
+		["が", "ぎゃ"],
+		["ぐ", "ぎゅ"],
+		["ご", "ぎょ"],
+		["ざ", "じゃ"],
+		["ず", "じゅ"],
+		["ぞ", "じょ"],
+		["だ", "ぢゃ"],
+		["づ", "ぢゅ"],
+		["ど", "ぢょ"],
+		["ば", "びゃ"],
+		["ぶ", "びゅ"],
+		["ぼ", "びょ"],
+		["ぱ", "ぴゃ"],
+		["ぷ", "ぴゅ"],
+		["ぽ", "ぴょ"]
+	]);
+	/** 濁点変換マップ */
+	const DAKUTEN_MAP = /* @__PURE__ */ new Map([
+		["か", "が"],
+		["き", "ぎ"],
+		["く", "ぐ"],
+		["け", "げ"],
+		["こ", "ご"],
+		["さ", "ざ"],
+		["し", "じ"],
+		["す", "ず"],
+		["せ", "ぜ"],
+		["そ", "ぞ"],
+		["た", "だ"],
+		["ち", "ぢ"],
+		["つ", "づ"],
+		["て", "で"],
+		["と", "ど"],
+		["は", "ば"],
+		["ひ", "び"],
+		["ふ", "ぶ"],
+		["へ", "べ"],
+		["ほ", "ぼ"],
+		["う", "ゔ"]
+	]);
+	/** 半濁点変換マップ */
+	const HANDAKUTEN_MAP = /* @__PURE__ */ new Map([
+		["は", "ぱ"],
+		["ひ", "ぴ"],
+		["ふ", "ぷ"],
+		["へ", "ぺ"],
+		["ほ", "ぽ"]
+	]);
+	/** 濁点逆引き（濁音→清音） */
+	const DAKUTEN_REVERSE = new Map([...DAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
+	/** 半濁点逆引き（半濁音→清音） */
+	const HANDAKUTEN_REVERSE = new Map([...HANDAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
+	//#endregion
+	//#region src/engine/postmodify.ts
+	const POST_MODIFY_OPS = [
+		"cycle",
+		"cycleDakuten",
+		"dakuten",
+		"handakuten",
+		"small"
+	];
+	/**
+	* サイクルの既定表。iOS 標準 12 キーの「゛゜小」と同系列（押すたびに次へ、末尾 → 先頭）。
+	* flickmap は `postModifyCycles` で完全置換できる。
+	*/
+	const DEFAULT_POST_MODIFY_CYCLES = [
+		"かが",
+		"きぎ",
+		"くぐ",
+		"けげ",
+		"こご",
+		"さざ",
+		"しじ",
+		"すず",
+		"せぜ",
+		"そぞ",
+		"ただ",
+		"ちぢ",
+		"つっづ",
+		"てで",
+		"とど",
+		"はばぱ",
+		"ひびぴ",
+		"ふぶぷ",
+		"へべぺ",
+		"ほぼぽ",
+		"あぁ",
+		"いぃ",
+		"うぅゔ",
+		"えぇ",
+		"おぉ",
+		"やゃ",
+		"ゆゅ",
+		"よょ",
+		"わゎ"
+	];
+	/** tail（末尾 1 字）の次のトグル字。どのサイクルにも無ければ null */
+	function nextPostModify(tail, cycles) {
+		for (const cycle of cycles) {
+			const chars = Array.from(cycle);
+			const i = chars.indexOf(tail);
+			if (i >= 0) return chars[(i + 1) % chars.length];
+		}
+		return null;
+	}
+	/**
+	* 濁点キー（方向つき）。清音↔濁音のトグルで、半濁音からは濁音へ。
+	*
+	* - か→が / が→か（トグル）
+	* - は→ば / ば→は（トグル）
+	* - ぱ→ば（半濁点を濁点に差し替え）
+	*/
+	function applyDakuten(tail) {
+		const seionFromHandakuten = HANDAKUTEN_REVERSE.get(tail);
+		if (seionFromHandakuten) return DAKUTEN_MAP.get(seionFromHandakuten) ?? seionFromHandakuten;
+		const seionFromDakuten = DAKUTEN_REVERSE.get(tail);
+		if (seionFromDakuten) return seionFromDakuten;
+		return DAKUTEN_MAP.get(tail) ?? null;
+	}
+	/**
+	* 半濁点キー（方向つき）。清音↔半濁音のトグルで、濁音からは半濁音へ。
+	*
+	* - は→ぱ / ぱ→は（トグル）
+	* - ば→ぱ（濁点を半濁点に差し替え）
+	*/
+	function applyHandakuten(tail) {
+		const seionFromHandakuten = HANDAKUTEN_REVERSE.get(tail);
+		if (seionFromHandakuten) return seionFromHandakuten;
+		const seion = DAKUTEN_REVERSE.get(tail) ?? tail;
+		return HANDAKUTEN_MAP.get(seion) ?? null;
+	}
+	/**
+	* 濁点キー 1 本で全部を回す（か→が→か / は→ば→ぱ→は）。
+	* ゲームパッド経路が従来から使っている挙動。
+	*/
+	function cycleDakuten(tail) {
+		const seionFromHandakuten = HANDAKUTEN_REVERSE.get(tail);
+		if (seionFromHandakuten) return seionFromHandakuten;
+		const seionFromDakuten = DAKUTEN_REVERSE.get(tail);
+		if (seionFromDakuten) return HANDAKUTEN_MAP.get(seionFromDakuten) ?? seionFromDakuten;
+		return DAKUTEN_MAP.get(tail) ?? null;
+	}
+	/** 小書きをトグルする（や↔ゃ） */
+	function applySmall(tail) {
+		return YOUON_POSTSHIFT_MAP.get(tail) ?? null;
+	}
+	/**
+	* 末尾 1 字に後置変調を適用した結果を返す。適用できなければ null。
+	*
+	* **対象は「合成テキストの末尾 1 字」で、その正は合成テキストの所有者が持つ**
+	* （docs/keymap-v2-requirements.md D4）。呼び出し側が所有者から末尾を取って渡すこと。
+	*/
+	function postModify(tail, op, cycles = DEFAULT_POST_MODIFY_CYCLES) {
+		switch (op) {
+			case "cycle": return nextPostModify(tail, cycles);
+			case "cycleDakuten": return cycleDakuten(tail);
+			case "dakuten": return applyDakuten(tail);
+			case "handakuten": return applyHandakuten(tail);
+			case "small": return applySmall(tail);
+		}
+	}
+	//#endregion
+	//#region src/engine/key-action-parser.ts
+	const FULL_VOCAB = [
+		"convert",
+		"confirm",
+		"cancel",
+		"deleteBack",
+		"moveLeft",
+		"moveRight",
+		"moveUp",
+		"moveDown",
+		"editSegmentLeft",
+		"editSegmentRight",
+		"switchToEnglish",
+		"switchToJapanese",
+		"toggleInputMode",
+		"insertAndConfirm",
+		"directInsert",
+		"insertSpace",
+		"postModify",
+		"pass"
+	];
+	const SURFACE_VOCAB = {
+		"keymap.specialActions": FULL_VOCAB,
+		"keymap.englishSpecialActions": FULL_VOCAB,
+		"keymap.singleTapAction": FULL_VOCAB,
+		"keymap.modeKeys": [
+			"switchToEnglish",
+			"switchToJapanese",
+			"toggleInputMode",
+			"postModify",
+			"pass"
+		]
+	};
+	const UNSUPPORTED_VOCAB = [
+		"convertPrev",
+		"confirmHiragana",
+		"confirmKatakana",
+		"confirmHalfWidthKatakana",
+		"confirmFullWidthRoman",
+		"confirmHalfWidthRoman",
+		"selectCandidate"
+	];
+	const PHASES = [
+		"idle",
+		"composing",
+		"selecting"
+	];
+	/** ガード付きオブジェクト形式 `{ action, when }` を素の値に分解する */
+	function unwrap(value) {
+		if (typeof value === "string") return { str: value };
+		if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+		const o = value;
+		if (typeof o.action !== "string") return null;
+		if (o.when === void 0) return { str: o.action };
+		if (!Array.isArray(o.when) || o.when.length === 0) return null;
+		if (o.when.some((p) => typeof p !== "string" || !PHASES.includes(p))) return null;
+		return {
+			str: o.action,
+			when: o.when
+		};
+	}
+	/** その局面でアクションが有効か。ガードが無ければ常に有効 */
+	function isActiveIn(when, phase) {
+		return when === void 0 || when.includes(phase);
+	}
+	/** パラメータ付きアクション（"名前:パラメータ" 形式）の組み立て */
+	function withParam(name, param) {
+		switch (name) {
+			case "insertAndConfirm": return param ? {
+				type: "insertAndConfirm",
+				text: param
+			} : null;
+			case "directInsert": return param ? {
+				type: "directInsert",
+				text: param
+			} : null;
+			case "insertSpace": return param === "shifted" ? {
+				type: "insertSpace",
+				shifted: true
+			} : null;
+			case "postModify": return POST_MODIFY_OPS.includes(param) ? {
+				type: "postModify",
+				op: param
+			} : null;
+			default: return null;
+		}
+	}
+	function withoutParam(name) {
+		switch (name) {
+			case "convert": return { type: "convert" };
+			case "confirm": return { type: "confirm" };
+			case "cancel": return { type: "cancel" };
+			case "deleteBack": return { type: "deleteBack" };
+			case "moveLeft": return { type: "moveLeft" };
+			case "moveRight": return { type: "moveRight" };
+			case "moveUp": return { type: "moveUp" };
+			case "moveDown": return { type: "moveDown" };
+			case "editSegmentLeft": return { type: "editSegmentLeft" };
+			case "editSegmentRight": return { type: "editSegmentRight" };
+			case "switchToEnglish": return { type: "switchToEnglish" };
+			case "switchToJapanese": return { type: "switchToJapanese" };
+			case "toggleInputMode": return { type: "toggleInputMode" };
+			case "insertSpace": return {
+				type: "insertSpace",
+				shifted: false
+			};
+			case "postModify": return {
+				type: "postModify",
+				op: "cycle"
+			};
+			case "pass": return { type: "pass" };
+			default: return null;
+		}
+	}
+	/**
+	* アクション文字列を KeyAction に変換し、**できなかった場合は理由を返す**。
+	*
+	* 呼び出し側はこの理由を診断（`KeymapDiagnostic`）に変換してホストへ渡す。
+	* v1.9.0 までは黙って捨てていた（`docs/keymap-v2-requirements.md` R3-4
+	* 「潰すのは許す。黙るのを禁じる」）。
+	*/
+	function parseKeyActionResult(value, surface) {
+		const unwrapped = unwrap(value);
+		if (!unwrapped) return {
+			ok: false,
+			reason: "bad-param"
+		};
+		const { str, when } = unwrapped;
+		const sep = str.indexOf(":");
+		const name = sep === -1 ? str : str.slice(0, sep);
+		const param = sep === -1 ? null : str.slice(sep + 1);
+		if (name.startsWith("x-")) return {
+			ok: false,
+			reason: "extension"
+		};
+		if (!SURFACE_VOCAB[surface].includes(name)) {
+			if (UNSUPPORTED_VOCAB.includes(name)) return {
+				ok: false,
+				reason: "unsupported"
+			};
+			return {
+				ok: false,
+				reason: Object.values(SURFACE_VOCAB).some((v) => v.includes(name)) ? "not-allowed-here" : "unknown"
+			};
+		}
+		const action = param === null ? withoutParam(name) : withParam(name, param);
+		if (action) return {
+			ok: true,
+			action,
+			when
+		};
+		return {
+			ok: false,
+			reason: "bad-param"
+		};
+	}
+	//#endregion
+	//#region src/engine/semantics.ts
+	const SUPPORTED_SEMANTICS = [
+		"behavior:sequential",
+		"behavior:chord",
+		"judgment:window",
+		"judgment:mutual",
+		"inputBase:romaji",
+		"suffixRules",
+		"keyRemap",
+		"modeKeys",
+		"chord:shiftKeys",
+		"chord:englishTables",
+		"prefixShiftKeys",
+		"requiresInput",
+		"actionGuard",
+		"postModify",
+		"roles",
+		"layouts",
+		"positionalBase"
+	];
+	/**
+	* `requires` を検証する。理解できない名前が 1 つでもあればエラー。
+	*
+	* **黙って無視してはならない**カテゴリ。`extensions` / `x-` の
+	* 「安全に無視してよい」とはちょうど逆向きの契約。
+	*/
+	function assertRequiredSemantics(raw) {
+		if (raw === void 0 || raw === null) return [];
+		if (!Array.isArray(raw) || raw.some((x) => typeof x !== "string")) throw new Error("KeymapEngine: requires は文字列の配列である必要があります");
+		const unknown = raw.filter((s) => !SUPPORTED_SEMANTICS.includes(s));
+		if (unknown.length > 0) throw new Error(`KeymapEngine: 理解できないセマンティクスを要求しています: ${unknown.join(", ")}。このエンジンでは、この配列を意図どおりに動かせません`);
+		return raw;
+	}
 	//#endregion
 	//#region src/engine/types.ts
 	/** Modifier key bit flags */
@@ -321,14 +795,46 @@ var KeymapEngine = (function () {
 	};
 	//#endregion
 	//#region src/engine/keymap-decoder.ts
+	const KNOWN_FIELDS = /* @__PURE__ */ new Set([
+		"$schema",
+		"formatVersion",
+		"requires",
+		"requiresInput",
+		"roles",
+		"layouts",
+		"base",
+		"name",
+		"description",
+		"author",
+		"contributor",
+		"basedOn",
+		"license",
+		"addedAt",
+		"keyboardLayout",
+		"targetScript",
+		"behavior",
+		"controlBindings",
+		"inputBase",
+		"keyRemap",
+		"suffixRules",
+		"inputMappings",
+		"prefixShiftKeys",
+		"bufferDisplayMap",
+		"modeKeys",
+		"extensions"
+	]);
+	const IGNORED_FIELDS = /* @__PURE__ */ new Set(["controlBindings", "bufferDisplayMap"]);
 	/** Parse a raw JSON object into a KeymapDefinition */
-	function decodeKeymap$1(json) {
+	function decodeKeymap$1(json, opts = {}) {
+		assertKnownFields(json, opts);
 		const behavior = json.behavior;
 		if (!behavior || behavior.type !== "sequential" && behavior.type !== "chord") throw new Error(`Unsupported behavior type: ${behavior?.type}`);
-		const modeKeys = decodeModeKeys(json.modeKeys);
+		const modeKeys = decodeModeKeys(json.modeKeys, opts);
 		const prefixShiftKeys = json.prefixShiftKeys;
 		const common = {
 			formatVersion: json.formatVersion || "1.0",
+			requires: assertRequiredSemantics(json.requires),
+			requiresInput: decodeInputLevel(json.requiresInput),
 			name: json.name,
 			description: json.description,
 			author: json.author,
@@ -336,6 +842,9 @@ var KeymapEngine = (function () {
 			basedOn: json.basedOn,
 			license: json.license,
 			keyboardLayout: json.keyboardLayout,
+			roles: json.roles,
+			layouts: json.layouts,
+			base: decodeBase(json.base),
 			targetScript: json.targetScript,
 			inputBase: json.inputBase,
 			keyRemap: json.keyRemap,
@@ -352,7 +861,7 @@ var KeymapEngine = (function () {
 				shiftKeys: config.shiftKeys ?? [],
 				lookupTable: config.lookupTable ?? {},
 				specialActions: config.specialActions ?? {},
-				judgment: config.judgment === "mutual" ? "mutual" : "window",
+				judgment: decodeJudgment(config.judgment),
 				simultaneousWindow: config.simultaneousWindow ?? .1,
 				englishLookupTable: config.englishLookupTable,
 				englishSpecialActions: config.englishSpecialActions
@@ -369,6 +878,13 @@ var KeymapEngine = (function () {
 		const rawMap = behavior.characterMap;
 		if (rawMap) {
 			for (const [k, v] of Object.entries(rawMap)) if (k.length === 1 && v.length === 1) characterMap[k] = v;
+			else if (!k.startsWith("_comment")) opts.onDiagnostic?.({
+				code: "character-map-invalid",
+				message: `characterMap は 1 文字 → 1 文字である必要があります: "${k}" → "${v}"`,
+				where: "behavior.characterMap",
+				key: k,
+				value: v
+			});
 		}
 		return {
 			...common,
@@ -379,20 +895,70 @@ var KeymapEngine = (function () {
 		};
 	}
 	/** Decode modeKeys from JSON string keys like "ctrl+space" */
-	function decodeModeKeys(raw) {
+	function decodeModeKeys(raw, opts) {
 		if (!raw) return [];
 		const entries = [];
-		for (const [keyStr, actionStr] of Object.entries(raw)) {
+		for (const [keyStr, rawAction] of Object.entries(raw)) {
+			if (keyStr.startsWith("_comment")) continue;
+			const actionStr = typeof rawAction === "string" ? rawAction : JSON.stringify(rawAction);
 			const trigger = decodeModeKeyTrigger(keyStr);
-			if (!trigger) continue;
-			const action = decodeKeyAction(actionStr);
-			if (!action) continue;
+			if (!trigger) {
+				opts.onDiagnostic?.({
+					code: "mode-key-trigger-unknown",
+					message: `modeKeys のキー名を解釈できません: "${keyStr}"`,
+					where: "modeKeys",
+					key: keyStr,
+					value: actionStr
+				});
+				continue;
+			}
+			const parsed = parseKeyActionResult(rawAction, "keymap.modeKeys");
+			if (!parsed.ok) {
+				reportActionRejection(opts.onDiagnostic, parsed.reason, "modeKeys", keyStr, actionStr);
+				continue;
+			}
 			entries.push({
 				trigger,
-				action
+				action: parsed.action,
+				...parsed.when ? { when: parsed.when } : {}
 			});
 		}
 		return entries;
+	}
+	/**
+	* トップレベルのフィールドを検査する。
+	*
+	* - **未知のフィールド → エラー**（黙って飛ばして読まない）
+	* - 既知だがこのランタイムが解釈しないフィールド → 診断で報告（読み込みは続ける）
+	*/
+	function assertKnownFields(json, opts) {
+		const unknown = Object.keys(json).filter((k) => !KNOWN_FIELDS.has(k) && !k.startsWith("_comment"));
+		if (unknown.length > 0) throw new Error(`KeymapEngine: 未知のフィールドがあります: ${unknown.join(", ")}。新しい仕様を要求する配列を、それを知らないエンジンで読もうとしています`);
+		if (!opts.onDiagnostic) return;
+		for (const k of Object.keys(json)) if (IGNORED_FIELDS.has(k)) opts.onDiagnostic({
+			code: "field-ignored",
+			message: `このランタイムは "${k}" を解釈しません（書いても効きません）`,
+			where: "(トップレベル)",
+			key: k
+		});
+	}
+	/** base の未知値はエラー（既定へ潰さない） */
+	function decodeBase(raw) {
+		if (raw === void 0 || raw === null) return void 0;
+		if (raw === "characters" || raw === "positional") return raw;
+		throw new Error(`KeymapEngine: 非対応の base "${String(raw)}"（characters / positional のみ）`);
+	}
+	/** requiresInput の未知値はエラー（既定へ潰さない） */
+	function decodeInputLevel(raw) {
+		if (raw === void 0 || raw === null) return void 0;
+		if (raw === "L1" || raw === "L2" || raw === "L3") return raw;
+		throw new Error(`KeymapEngine: 非対応の requiresInput "${String(raw)}"（L1 / L2 / L3 のみ）`);
+	}
+	/** judgment の未知値は既定へ潰さずエラー（v1.10.0。旧版は黙って window にしていた） */
+	function decodeJudgment(raw) {
+		if (raw === void 0 || raw === null) return "window";
+		if (raw === "window" || raw === "mutual") return raw;
+		throw new Error(`KeymapEngine: 非対応の judgment "${String(raw)}"（"window" / "mutual" のみ）。新しい判定方式を要求する配列を、それを知らないエンジンで読もうとしています`);
 	}
 	/** Parse "ctrl+shift+j" → { keyCode, modifiers } */
 	function decodeModeKeyTrigger(str) {
@@ -420,25 +986,88 @@ var KeymapEngine = (function () {
 		};
 	}
 	/** Parse a KeyAction string from JSON */
-	function decodeKeyAction(str) {
-		switch (str) {
-			case "convert": return { type: "convert" };
-			case "confirm": return { type: "confirm" };
-			case "cancel": return { type: "cancel" };
-			case "deleteBack": return { type: "deleteBack" };
-			case "switchToEnglish": return { type: "switchToEnglish" };
-			case "switchToJapanese": return { type: "switchToJapanese" };
-			case "toggleInputMode": return { type: "toggleInputMode" };
-			case "pass": return { type: "pass" };
-			default: return null;
-		}
-	}
 	/** Filter out _comment keys from inputMappings */
 	function filterComments(mappings) {
 		if (!mappings) return void 0;
 		const result = {};
 		for (const [k, v] of Object.entries(mappings)) if (!k.startsWith("_comment")) result[k] = v;
 		return Object.keys(result).length > 0 ? result : void 0;
+	}
+	//#endregion
+	//#region src/engine/input-level.ts
+	const ORDER = {
+		L1: 1,
+		L2: 2,
+		L3: 3
+	};
+	/**
+	* この配列を**このランタイムで**動かすのに必要な段を求める。
+	*
+	* - 逐次系 → L1（完結した打鍵列だけで意味が決まる）
+	* - chord 系 → **L3**。仕様上は時間窓方式なら L2 で近似できるが、
+	*   この実装は `window` でも単打確定を全キーリリースに置いている
+	*   （`SimultaneousKeyBuffer` は heldKeys 駆動）ため、実際には keyup が要る
+	*
+	* JSON の `requiresInput` 宣言は**厳しくする方向にのみ**効く。緩める宣言
+	* （実装が L3 を要るのに L1 と書く）を通すと、動かない配列を「動く」と誤って
+	* 見せることになるため。
+	*/
+	function requiredInputLevel(def) {
+		const derived = def.behavior.type === "chord" ? "L3" : "L1";
+		const declared = def.requiresInput;
+		if (declared && ORDER[declared] > ORDER[derived]) return declared;
+		return derived;
+	}
+	/** ホストの段で、その配列が動くか */
+	function isSatisfiedBy(required, hostLevel) {
+		return ORDER[hostLevel] >= ORDER[required];
+	}
+	//#endregion
+	//#region src/engine/roles.ts
+	/**
+	* 役名の別名。正規名は機能ベースで、身体部位の名前は可読性のために受理するだけ。
+	* v1 の `leftThumb` / `rightThumb` / `space` からの書き換えを不要にする効果もある。
+	*/
+	const ROLE_ALIASES = {
+		leftThumb: "holder1",
+		rightThumb: "holder2"
+	};
+	/** 別名を正規名に直す */
+	function canonicalRole(name) {
+		return ROLE_ALIASES[name] ?? name;
+	}
+	/**
+	* 役を解決する。
+	*
+	* @param layout どのレイアウトの追加バインドを適用するか（`layouts` のキー）。
+	*               省略すると `layouts` は適用されない（役の既定候補だけ）
+	* @param overrides ホストの実行時上書き。役 → 物理キー名の配列。
+	*                  **指定された役は既定を置き換える**（追加ではない）
+	*/
+	function resolveRoles(def, layout, overrides) {
+		const bindings = /* @__PURE__ */ new Map();
+		const order = [];
+		for (const [rawName, role] of Object.entries(def.roles ?? {})) {
+			const name = canonicalRole(rawName);
+			order.push(name);
+			const override = overrides?.get(name);
+			if (override) {
+				bindings.set(name, [...new Set(override)]);
+				continue;
+			}
+			const keys = [...role.keys ?? []];
+			const extra = layout ? def.layouts?.[layout]?.[rawName] ?? def.layouts?.[layout]?.[name] : void 0;
+			if (extra) keys.push(...extra);
+			bindings.set(name, [...new Set(keys)]);
+		}
+		const keyToRole = /* @__PURE__ */ new Map();
+		for (const name of order) for (const key of bindings.get(name) ?? []) if (!keyToRole.has(key)) keyToRole.set(key, name);
+		return {
+			bindings,
+			keyToRole,
+			order,
+			unbound: order.filter((n) => (bindings.get(n) ?? []).length === 0)
+		};
 	}
 	//#endregion
 	//#region src/engine/standard-romaji.ts
@@ -968,7 +1597,20 @@ var KeymapEngine = (function () {
 	//#endregion
 	//#region src/engine/keymap-expander.ts
 	/** Expand a KeymapDefinition into an ExpandedKeymap with pre-computed lookup data */
-	function expandKeymap(def) {
+	/** roles の宣言を正規名で引けるようにする（別名 leftThumb → holder1 を吸収） */
+	function normalizedRoleDefs(def) {
+		const out = {};
+		for (const [name, role] of Object.entries(def.roles ?? {})) out[canonicalRole(name)] = role;
+		return out;
+	}
+	function expandKeymap(def, opts = {}) {
+		const roles = resolveRoles(def, opts.layout, opts.roleOverrides);
+		for (const name of roles.unbound) opts.onDiagnostic?.({
+			code: "role-unbound",
+			message: `役 "${name}" に物理キーが割り当てられていません（この面は到達できません）`,
+			where: "roles",
+			key: name
+		});
 		const inputMappings = expandInputMappings(def.inputBase, def.suffixRules, def.inputMappings);
 		const prefixSet = buildPrefixSet(inputMappings);
 		const charMapBase = def.inputBase === "romaji" ? h2zMapUS : {};
@@ -976,9 +1618,12 @@ var KeymapEngine = (function () {
 			...charMapBase,
 			...def.behavior.characterMap
 		} : {};
-		const chordData = def.behavior.type === "chord" ? expandChordData(def.behavior.config) : void 0;
+		const chordData = def.behavior.type === "chord" ? expandChordData(def.behavior.config, opts, roles, normalizedRoleDefs(def)) : void 0;
 		return {
 			definition: def,
+			requiredInputLevel: requiredInputLevel(def),
+			roleBindings: roles.bindings,
+			unboundRoles: roles.unbound,
 			inputMappings,
 			prefixSet,
 			characterMap,
@@ -1135,97 +1780,160 @@ var KeymapEngine = (function () {
 		}
 		return bits;
 	}
-	/** Parse a special action string → KeyAction */
-	function parseSpecialAction(str) {
-		switch (str) {
-			case "deleteBack": return { type: "deleteBack" };
-			case "confirm": return { type: "confirm" };
-			case "cancel": return { type: "cancel" };
-			case "convert": return { type: "convert" };
-			case "moveLeft": return { type: "moveLeft" };
-			case "moveRight": return { type: "moveRight" };
-			case "moveUp": return { type: "moveUp" };
-			case "moveDown": return { type: "moveDown" };
-			case "switchToEnglish": return { type: "switchToEnglish" };
-			case "switchToJapanese": return { type: "switchToJapanese" };
-			case "editSegmentLeft": return { type: "editSegmentLeft" };
-			case "editSegmentRight": return { type: "editSegmentRight" };
-			default:
-				if (str.startsWith("insertAndConfirm:")) return {
-					type: "insertAndConfirm",
-					text: str.slice(17)
-				};
-				return null;
-		}
-	}
 	/** Expand chord config into ExpandedChordData */
-	function expandChordData(config) {
+	function expandChordData(config, opts = {}, roles, roleDefs) {
+		const diag = opts.onDiagnostic;
+		const roleBitIndex = /* @__PURE__ */ new Map();
+		(roles?.order ?? []).forEach((name, i) => roleBitIndex.set(name, 30 + i));
+		/** ビットマスク表記のキーを解く。未知の ChordKey 名は報告して捨てる */
+		const parseKeyOrReport = (keyStr, where, value) => {
+			const bits = parseLookupKey(keyStr, keyBits);
+			if (bits === void 0) diag?.({
+				code: "chord-key-unknown",
+				message: `未知の ChordKey 名を含む組合せです: "${keyStr}"`,
+				where,
+				key: keyStr,
+				value
+			});
+			return bits;
+		};
 		const keyBits = /* @__PURE__ */ new Map();
 		for (const [name, idx] of Object.entries(CHORD_KEY_BIT_INDEX)) keyBits.set(name, 2 ** idx);
+		for (const [name, idx] of roleBitIndex) keyBits.set(name, 2 ** idx);
+		for (const alias of [
+			"leftThumb",
+			"rightThumb",
+			"space"
+		]) {
+			const canon = canonicalRole(alias);
+			const idx = roleBitIndex.get(canon);
+			if (idx !== void 0 && !roleBitIndex.has(alias)) keyBits.set(alias, 2 ** idx);
+		}
 		const hidToChordKey = /* @__PURE__ */ new Map();
+		for (const [roleName, physKeys] of roles?.bindings ?? []) for (const physName of physKeys) {
+			const hid = hidNameToCode(physName);
+			if (hid !== void 0) hidToChordKey.set(hid, roleName);
+			else diag?.({
+				code: "hid-key-unknown",
+				message: `役 "${roleName}" に未知の物理キー名が割り当てられています: "${physName}"`,
+				where: "roles",
+				key: physName,
+				value: roleName
+			});
+		}
 		for (const [hidName, chordKeyName] of Object.entries(config.hidToKey)) {
+			if (hidName.startsWith("_comment")) continue;
 			const hid = hidNameToCode(hidName);
 			if (hid !== void 0) hidToChordKey.set(hid, chordKeyName);
+			else diag?.({
+				code: "hid-key-unknown",
+				message: `未知の物理キー名です: "${hidName}"`,
+				where: "behavior.config.hidToKey",
+				key: hidName,
+				value: chordKeyName
+			});
 		}
 		const lookupTable = /* @__PURE__ */ new Map();
 		for (const [keyStr, output] of Object.entries(config.lookupTable)) {
-			const bits = parseLookupKey(keyStr, keyBits);
+			if (keyStr.startsWith("_comment")) continue;
+			const bits = parseKeyOrReport(keyStr, "behavior.config.lookupTable", output);
 			if (bits !== void 0) lookupTable.set(bits, output);
 		}
 		const specialActions = /* @__PURE__ */ new Map();
-		for (const [keyStr, actionStr] of Object.entries(config.specialActions)) {
-			const bits = parseLookupKey(keyStr, keyBits);
-			const action = parseSpecialAction(actionStr);
-			if (bits !== void 0 && action) specialActions.set(bits, action);
+		const specialActionGuards = /* @__PURE__ */ new Map();
+		for (const [keyStr, rawAction] of Object.entries(config.specialActions)) {
+			if (keyStr.startsWith("_comment")) continue;
+			const where = "behavior.config.specialActions";
+			const label = typeof rawAction === "string" ? rawAction : JSON.stringify(rawAction);
+			const bits = parseKeyOrReport(keyStr, where, label);
+			const parsed = parseKeyActionResult(rawAction, "keymap.specialActions");
+			if (!parsed.ok) {
+				reportActionRejection(diag, parsed.reason, where, keyStr, label);
+				continue;
+			}
+			if (bits !== void 0) {
+				specialActions.set(bits, parsed.action);
+				if (parsed.when) specialActionGuards.set(bits, parsed.when);
+			}
 		}
-		const shiftKeys = /* @__PURE__ */ new Set();
+		const shiftKeys = new Set(roles?.order ?? []);
 		const shiftSingleTapActions = /* @__PURE__ */ new Map();
+		const shiftSingleTapGuards = /* @__PURE__ */ new Map();
 		const spaceRole = hidToChordKey.get(HID.SPACE);
-		for (const sk of config.shiftKeys) {
+		for (const [roleName, physKeys] of roles?.bindings ?? []) {
+			const decl = roleDefs?.[roleName]?.singleTapAction;
+			if (decl !== void 0) {
+				const parsed = parseKeyActionResult(decl, "keymap.singleTapAction");
+				if (parsed.ok) {
+					shiftSingleTapActions.set(roleName, parsed.action);
+					if (parsed.when) shiftSingleTapGuards.set(roleName, parsed.when);
+				} else reportActionRejection(diag, parsed.reason, "roles", roleName, String(decl));
+			} else if (physKeys.includes("space")) shiftSingleTapActions.set(roleName, { type: "convert" });
+		}
+		for (const sk of config.shiftKeys ?? []) {
 			shiftKeys.add(sk.key);
 			if (sk.singleTapAction) {
-				const action = parseSpecialAction(sk.singleTapAction);
-				if (action) shiftSingleTapActions.set(sk.key, action);
+				const parsed = parseKeyActionResult(sk.singleTapAction, "keymap.singleTapAction");
+				if (parsed.ok) {
+					shiftSingleTapActions.set(sk.key, parsed.action);
+					if (parsed.when) shiftSingleTapGuards.set(sk.key, parsed.when);
+				} else reportActionRejection(diag, parsed.reason, "behavior.config.shiftKeys", sk.key, sk.singleTapAction);
 			} else if (sk.key === spaceRole) shiftSingleTapActions.set(sk.key, { type: "convert" });
 		}
 		let englishLookupTable = null;
 		if (config.englishLookupTable) {
 			englishLookupTable = /* @__PURE__ */ new Map();
 			for (const [keyStr, output] of Object.entries(config.englishLookupTable)) {
-				const bits = parseLookupKey(keyStr, keyBits);
+				if (keyStr.startsWith("_comment")) continue;
+				const bits = parseKeyOrReport(keyStr, "behavior.config.englishLookupTable", output);
 				if (bits !== void 0) englishLookupTable.set(bits, output);
 			}
 		}
 		let englishSpecialActions = null;
+		let englishSpecialActionGuards = null;
 		if (config.englishSpecialActions) {
 			englishSpecialActions = /* @__PURE__ */ new Map();
-			for (const [keyStr, actionStr] of Object.entries(config.englishSpecialActions)) {
-				const bits = parseLookupKey(keyStr, keyBits);
-				const action = parseSpecialAction(actionStr);
-				if (bits !== void 0 && action) englishSpecialActions.set(bits, action);
+			englishSpecialActionGuards = /* @__PURE__ */ new Map();
+			for (const [keyStr, rawAction] of Object.entries(config.englishSpecialActions)) {
+				if (keyStr.startsWith("_comment")) continue;
+				const where = "behavior.config.englishSpecialActions";
+				const label = typeof rawAction === "string" ? rawAction : JSON.stringify(rawAction);
+				const bits = parseKeyOrReport(keyStr, where, label);
+				const parsed = parseKeyActionResult(rawAction, "keymap.englishSpecialActions");
+				if (!parsed.ok) {
+					reportActionRejection(diag, parsed.reason, where, keyStr, label);
+					continue;
+				}
+				if (bits !== void 0) {
+					englishSpecialActions.set(bits, parsed.action);
+					if (parsed.when) englishSpecialActionGuards.set(bits, parsed.when);
+				}
 			}
 		}
 		return {
 			hidToChordKey,
 			lookupTable,
 			specialActions,
+			specialActionGuards,
 			shiftKeys,
 			shiftSingleTapActions,
+			shiftSingleTapGuards,
 			keyBits,
 			judgment: config.judgment ?? "window",
 			simultaneousWindow: Math.round(config.simultaneousWindow * 1e3),
 			englishLookupTable,
-			englishSpecialActions
+			englishSpecialActions,
+			englishSpecialActionGuards
 		};
 	}
 	//#endregion
 	//#region src/engine/version.ts
-	const ENGINE_VERSION = "1.8.0";
+	const ENGINE_VERSION = "2.0.0";
 	//#endregion
 	//#region src/engine/key-router.ts
 	/** Route a KeyEvent to a KeyAction based on the expanded keymap */
-	function routeKey(event, keymap, isComposing, state, isDirectEnglishMode) {
-		const modeAction = matchModeKey(event, keymap);
+	function routeKey(event, keymap, isComposing, state, isDirectEnglishMode, phase = isComposing ? "composing" : "idle") {
+		const modeAction = matchModeKey(event, keymap, phase);
 		if (modeAction) return modeAction;
 		if (event.keyCode === HID.BACKSPACE && !(event.modifiers & (KeyModifierFlags.META | KeyModifierFlags.ALT))) return { type: "deleteBack" };
 		if (isComposing && event.modifiers & KeyModifierFlags.CONTROL) return routeControlKey(event);
@@ -1244,14 +1952,14 @@ var KeymapEngine = (function () {
 		return routeSequential(event, keymap, isComposing, isDirectEnglishMode);
 	}
 	/** Match modeKeys triggers */
-	function matchModeKey(event, keymap) {
+	function matchModeKey(event, keymap, phase) {
 		const eventMods = event.modifiers & (KeyModifierFlags.SHIFT | KeyModifierFlags.CONTROL | KeyModifierFlags.ALT);
-		for (const entry of keymap.modeKeys) {
+		for (const withModifiers of [true, false]) for (const entry of keymap.modeKeys) {
 			const t = entry.trigger;
 			if (t.keyCode !== event.keyCode) continue;
-			if (t.modifiers !== 0) {
-				if (t.modifiers === eventMods) return entry.action;
-			} else return entry.action;
+			if (t.modifiers !== 0 !== withModifiers) continue;
+			if (!isActiveIn(entry.when, phase)) continue;
+			if (t.modifiers === 0 || t.modifiers === eventMods) return entry.action;
 		}
 		return null;
 	}
@@ -1287,7 +1995,7 @@ var KeymapEngine = (function () {
 			};
 			return { type: "pass" };
 		}
-		const chars = event.characters;
+		const chars = (keymap.definition.base === "positional" && event.modifiers === 0 ? hidToUsLegend(event.keyCode) : void 0) ?? event.characters;
 		if (chars.length !== 1) return { type: "pass" };
 		const c = chars;
 		const logical = keymap.keyRemap[c] ?? c;
@@ -1489,6 +2197,9 @@ var KeymapEngine = (function () {
 		static {
 			this.EMPTY_SPECIALS = /* @__PURE__ */ new Map();
 		}
+		static {
+			this.EMPTY_GUARDS = /* @__PURE__ */ new Map();
+		}
 		/** 現在のモードの lookup テーブル */
 		lookup() {
 			return this.englishMode ? this.chord.englishLookupTable ?? SimultaneousKeyBuffer.EMPTY_LOOKUP : this.chord.lookupTable;
@@ -1497,12 +2208,38 @@ var KeymapEngine = (function () {
 		specials() {
 			return this.englishMode ? this.chord.englishSpecialActions ?? SimultaneousKeyBuffer.EMPTY_SPECIALS : this.chord.specialActions;
 		}
+		guards() {
+			return this.englishMode ? this.chord.englishSpecialActionGuards ?? SimultaneousKeyBuffer.EMPTY_GUARDS : this.chord.specialActionGuards;
+		}
+		/**
+		* その組合せの specialAction。**局面ガードが外れていれば「定義が無い」ものとして扱う**
+		* （lookupTable にあればそちらが出て、無ければ fall-through する）。
+		*/
+		specialAt(bits) {
+			const action = this.specials().get(bits);
+			if (action === void 0) return void 0;
+			const when = this.guards().get(bits);
+			if (when && this.hostPhase && !isActiveIn(when, this.hostPhase())) return void 0;
+			return action;
+		}
+		hasSpecialAt(bits) {
+			return this.specialAt(bits) !== void 0;
+		}
+		/** シフト役の単打アクション。局面ガードが外れていれば無し扱い */
+		singleTapAt(key) {
+			const action = this.chord.shiftSingleTapActions.get(key);
+			if (action === void 0) return void 0;
+			const when = this.chord.shiftSingleTapGuards.get(key);
+			if (when && this.hostPhase && !isActiveIn(when, this.hostPhase())) return void 0;
+			return action;
+		}
 		constructor(chord) {
 			this.state = { type: "idle" };
 			this.timerId = null;
 			this.pressedKeys = /* @__PURE__ */ new Set();
 			this.windowOverride = null;
 			this.englishMode = false;
+			this.hostPhase = null;
 			this.onOutput = null;
 			this.onShiftSingle = null;
 			this.onSpecialAction = null;
@@ -1544,7 +2281,7 @@ var KeymapEngine = (function () {
 			this.pressedKeys.delete(key);
 			if (this.state.type === "shiftHeld" && this.state.shiftKey === key) {
 				if (!this.state.used) {
-					const action = this.chord.shiftSingleTapActions.get(key);
+					const action = this.singleTapAt(key);
 					if (action) this.onShiftSingle?.(action);
 				}
 				this.state = { type: "idle" };
@@ -1576,7 +2313,7 @@ var KeymapEngine = (function () {
 			}
 			let candidate = bit;
 			for (const k of this.mutualGroup) candidate += this.getBit(k) ?? 0;
-			if (this.lookup().has(candidate) || this.specials().has(candidate)) {
+			if (this.lookup().has(candidate) || this.hasSpecialAt(candidate)) {
 				this.mutualGroup.add(key);
 				this.mutualOrder.push(key);
 				this.evaluateMutualChord(candidate);
@@ -1615,7 +2352,7 @@ var KeymapEngine = (function () {
 				this.mutualOutputted = true;
 				return;
 			}
-			const action = this.specials().get(bits);
+			const action = this.specialAt(bits);
 			if (action) {
 				if (this.mutualCharCount > 0) {
 					this.onOutput?.("", this.mutualCharCount);
@@ -1651,13 +2388,13 @@ var KeymapEngine = (function () {
 		/** 単打出力（シフトキー → 単打アクション、specialAction 優先、なければ文字） */
 		mutualSingleTap(key) {
 			if (this.chord.shiftKeys.has(key)) {
-				const action = this.chord.shiftSingleTapActions.get(key);
+				const action = this.singleTapAt(key);
 				if (action) this.onShiftSingle?.(action);
 				return;
 			}
 			const bit = this.getBit(key);
 			if (bit === void 0) return;
-			const action = this.specials().get(bit);
+			const action = this.specialAt(bit);
 			if (action) {
 				this.onSpecialAction?.(action);
 				return;
@@ -1720,7 +2457,7 @@ var KeymapEngine = (function () {
 			const keyBit = this.getBit(key);
 			if (!firstBit || !keyBit) return;
 			const combined = firstBit + keyBit;
-			const specialAction = this.specials().get(combined);
+			const specialAction = this.specialAt(combined);
 			if (specialAction) {
 				if (firstCharCount > 0) this.onOutput?.("", firstCharCount);
 				const keys = /* @__PURE__ */ new Set([firstKey, key]);
@@ -1749,11 +2486,11 @@ var KeymapEngine = (function () {
 				this.startTimer();
 			} else if (firstOutput === null) {
 				if (this.chord.shiftKeys.has(firstKey)) {
-					const action = this.chord.shiftSingleTapActions.get(firstKey);
+					const action = this.singleTapAt(firstKey);
 					if (action) this.onShiftSingle?.(action);
 				} else {
 					const firstBits = this.getBit(firstKey);
-					const pendingAction2 = firstBits ? this.specials().get(firstBits) : null;
+					const pendingAction2 = firstBits ? this.specialAt(firstBits) : null;
 					if (pendingAction2) this.onSpecialAction?.(pendingAction2);
 				}
 				this.state = { type: "idle" };
@@ -1807,7 +2544,7 @@ var KeymapEngine = (function () {
 			const keyBit = this.getBit(key);
 			if (!shiftBit || !keyBit) return;
 			const combined = shiftBit + keyBit;
-			const specialAction = this.specials().get(combined);
+			const specialAction = this.specialAt(combined);
 			if (specialAction) {
 				this.onSpecialAction?.(specialAction);
 				this.state = {
@@ -1828,7 +2565,7 @@ var KeymapEngine = (function () {
 				return;
 			}
 			if (!used) {
-				const action = this.chord.shiftSingleTapActions.get(shiftKey);
+				const action = this.singleTapAt(shiftKey);
 				if (action) this.onShiftSingle?.(action);
 			}
 			this.state = { type: "idle" };
@@ -1857,14 +2594,14 @@ var KeymapEngine = (function () {
 						used: false
 					};
 					else {
-						const action = this.chord.shiftSingleTapActions.get(firstKey);
+						const action = this.singleTapAt(firstKey);
 						if (action) this.onShiftSingle?.(action);
 						this.state = { type: "idle" };
 					}
 					else {
 						const bits = this.getBit(firstKey);
 						if (bits) {
-							const pendingAction = this.specials().get(bits);
+							const pendingAction = this.specialAt(bits);
 							if (pendingAction) this.onSpecialAction?.(pendingAction);
 						}
 						this.state = { type: "idle" };
@@ -1895,92 +2632,6 @@ var KeymapEngine = (function () {
 		}
 	};
 	//#endregion
-	//#region src/engine/gamepad-kana-table.ts
-	/** LT後置シフトマップ: 子音かな→拗音, 母音→小書き */
-	const YOUON_POSTSHIFT_MAP = /* @__PURE__ */ new Map([
-		["あ", "ぁ"],
-		["い", "ぃ"],
-		["う", "ぅ"],
-		["え", "ぇ"],
-		["お", "ぉ"],
-		["や", "ゃ"],
-		["ゆ", "ゅ"],
-		["よ", "ょ"],
-		["わ", "ゎ"],
-		["か", "きゃ"],
-		["く", "きゅ"],
-		["こ", "きょ"],
-		["さ", "しゃ"],
-		["す", "しゅ"],
-		["そ", "しょ"],
-		["た", "ちゃ"],
-		["つ", "ちゅ"],
-		["と", "ちょ"],
-		["な", "にゃ"],
-		["ぬ", "にゅ"],
-		["の", "にょ"],
-		["は", "ひゃ"],
-		["ふ", "ひゅ"],
-		["ほ", "ひょ"],
-		["ま", "みゃ"],
-		["む", "みゅ"],
-		["も", "みょ"],
-		["ら", "りゃ"],
-		["る", "りゅ"],
-		["ろ", "りょ"],
-		["が", "ぎゃ"],
-		["ぐ", "ぎゅ"],
-		["ご", "ぎょ"],
-		["ざ", "じゃ"],
-		["ず", "じゅ"],
-		["ぞ", "じょ"],
-		["だ", "ぢゃ"],
-		["づ", "ぢゅ"],
-		["ど", "ぢょ"],
-		["ば", "びゃ"],
-		["ぶ", "びゅ"],
-		["ぼ", "びょ"],
-		["ぱ", "ぴゃ"],
-		["ぷ", "ぴゅ"],
-		["ぽ", "ぴょ"]
-	]);
-	/** 濁点変換マップ */
-	const DAKUTEN_MAP = /* @__PURE__ */ new Map([
-		["か", "が"],
-		["き", "ぎ"],
-		["く", "ぐ"],
-		["け", "げ"],
-		["こ", "ご"],
-		["さ", "ざ"],
-		["し", "じ"],
-		["す", "ず"],
-		["せ", "ぜ"],
-		["そ", "ぞ"],
-		["た", "だ"],
-		["ち", "ぢ"],
-		["つ", "づ"],
-		["て", "で"],
-		["と", "ど"],
-		["は", "ば"],
-		["ひ", "び"],
-		["ふ", "ぶ"],
-		["へ", "べ"],
-		["ほ", "ぼ"],
-		["う", "ゔ"]
-	]);
-	/** 半濁点変換マップ */
-	const HANDAKUTEN_MAP = /* @__PURE__ */ new Map([
-		["は", "ぱ"],
-		["ひ", "ぴ"],
-		["ふ", "ぷ"],
-		["へ", "ぺ"],
-		["ほ", "ぽ"]
-	]);
-	/** 濁点逆引き（濁音→清音） */
-	const DAKUTEN_REVERSE = new Map([...DAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
-	/** 半濁点逆引き（半濁音→清音） */
-	const HANDAKUTEN_REVERSE = new Map([...HANDAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
-	//#endregion
 	//#region src/engine/input-engine.ts
 	var InputEngine = class {
 		constructor(keymap) {
@@ -1991,6 +2642,7 @@ var KeymapEngine = (function () {
 			this.chordBuffer = null;
 			this.onStateChange = null;
 			this.onHostAction = null;
+			this.hostPhase = null;
 			this.keymap = keymap;
 			this.buffer.setMappings(keymap.inputMappings, keymap.prefixSet);
 			this.setupChordBuffer(keymap);
@@ -2008,7 +2660,7 @@ var KeymapEngine = (function () {
 			const isComposing = this.composingKana.length > 0 || !this.buffer.isEmpty;
 			const state = isComposing ? "composing" : "idle";
 			const isEnglish = this.inputMode === "english";
-			const action = routeKey(event, this.keymap, isComposing, state, isEnglish);
+			const action = routeKey(event, this.keymap, isComposing, state, isEnglish, this.phase);
 			this.executeAction(action);
 			return this.getState();
 		}
@@ -2021,9 +2673,28 @@ var KeymapEngine = (function () {
 			return this.getState();
 		}
 		/** Get current state */
+		/**
+		* このエンジン自身が合成中か（よみ or ローマ字バッファを保持している）。
+		*
+		* `getState()` は `phase` を含み、`phase` は `hostPhase()` を呼ぶ。セッション側が
+		* `hostPhase` の中で `getState()` を見ると**無限再帰**になるので、問い合わせ用に
+		* 副作用の無いこちらを公開している。
+		*/
+		get isComposing() {
+			return this.composingKana.length > 0 || !this.buffer.isEmpty;
+		}
+		/**
+		* 現在の局面。所有者（セッション層）が居ればそちらを正とし、居なければ自分の
+		* 合成状態から導出する。
+		*/
+		get phase() {
+			if (this.hostPhase) return this.hostPhase();
+			return this.isComposing ? "composing" : "idle";
+		}
 		getState() {
 			const isComposing = this.composingKana.length > 0 || !this.buffer.isEmpty;
 			return {
+				phase: this.phase,
 				confirmedText: this.confirmedText,
 				composingKana: this.composingKana,
 				pendingBuffer: this.buffer.pending,
@@ -2069,40 +2740,28 @@ var KeymapEngine = (function () {
 		}
 		/** composingKana 末尾の濁点/半濁点/清音をトグル（か→が→か、は→ば→ぱ→は） */
 		applyToggleDakuten() {
-			if (this.composingKana.length === 0) return this.getState();
-			const chars = [...this.composingKana];
-			const last = chars[chars.length - 1];
-			const seionFromHandakuten = HANDAKUTEN_REVERSE.get(last);
-			if (seionFromHandakuten) {
-				chars[chars.length - 1] = seionFromHandakuten;
-				this.composingKana = chars.join("");
-				return this.getState();
-			}
-			const seionFromDakuten = DAKUTEN_REVERSE.get(last);
-			if (seionFromDakuten) {
-				const handakuten = HANDAKUTEN_MAP.get(seionFromDakuten);
-				if (handakuten) chars[chars.length - 1] = handakuten;
-				else chars[chars.length - 1] = seionFromDakuten;
-				this.composingKana = chars.join("");
-				return this.getState();
-			}
-			const dakuten = DAKUTEN_MAP.get(last);
-			if (dakuten) {
-				chars[chars.length - 1] = dakuten;
-				this.composingKana = chars.join("");
-			}
-			return this.getState();
+			return this.applyPostModify("cycleDakuten");
 		}
 		/** composingKana 末尾を拗音/小書きに変換。対象外なら「っ」を追加 */
 		applyYouon() {
+			return this.applyPostModify("small");
+		}
+		/**
+		* composingKana 末尾 1 字に後置変調を適用する。
+		*
+		* **対象の正は「合成テキストの所有者」が持つ**（docs/keymap-v2-requirements.md D4）。
+		* このエンジンが合成中はエンジンが所有者なので `composingKana` の末尾でよい。
+		* 合成していないときは所有者がセッション層側なので、ここでは何もしない
+		* （その経路はセッション層の postModify プリミティブの担当。別便）。
+		*/
+		applyPostModify(op) {
 			if (this.composingKana.length === 0) return this.getState();
 			const chars = [...this.composingKana];
 			const last = chars[chars.length - 1];
-			const replaced = YOUON_POSTSHIFT_MAP.get(last);
-			if (replaced) {
-				chars[chars.length - 1] = replaced[0];
-				this.composingKana = chars.join("") + replaced.slice(1);
-			} else this.composingKana += "っ";
+			const next = postModify(last, op);
+			if (next === null) return this.getState();
+			chars[chars.length - 1] = next;
+			this.composingKana = chars.join("");
 			return this.getState();
 		}
 		/** Reset all state */
@@ -2129,6 +2788,7 @@ var KeymapEngine = (function () {
 		setupChordBuffer(keymap) {
 			if (keymap.chordData) {
 				this.chordBuffer = new SimultaneousKeyBuffer(keymap.chordData);
+				this.chordBuffer.hostPhase = () => this.phase;
 				this.syncChordBufferMode();
 				this.chordBuffer.onOutput = (text, replaceCount) => {
 					if (this.inputMode === "english") {
@@ -2230,6 +2890,10 @@ var KeymapEngine = (function () {
 					if (this.onHostAction?.(action)) break;
 					this.confirmComposition();
 					break;
+				case "postModify":
+					if (this.isComposing) this.applyPostModify(action.op);
+					else this.onHostAction?.(action);
+					break;
 				case "pass": break;
 			}
 		}
@@ -2307,22 +2971,27 @@ var KeymapEngine = (function () {
 	/** このバンドルのバージョン（取り込み側が記録する用） */
 	const version = ENGINE_VERSION;
 	/** サポートする keymap-format のメジャーバージョン */
-	const SUPPORTED_MAJOR = 1;
+	const SUPPORTED_MAJOR = 2;
 	/**
 	* keymap JSON を検証しつつ ExpandedKeymap に変換する。
 	* `InputEngine` のコンストラクタにそのまま渡せる形。
 	*
 	* - `formatVersion` のメジャーが非対応なら明確なエラーを投げる。
 	* - `behavior.type` が未対応（sequential / chord 以外）ならデコーダがエラーを投げる。
+	* - `judgment` が未知の値ならエラーを投げる（v1.10.0。旧版は黙って window に潰していた）。
+	* - `requires` に理解できないセマンティクス名があればエラーを投げる（v1.11.0）。
+	* - `opts.onDiagnostic` を渡すと、**解釈できずに捨てたエントリ**を報告する
+	*   （未知のキー名・その面では書けないアクション・壊れたパラメータ等）。
+	*   省略時は従来どおり黙って捨てる。
 	*/
-	function decodeKeymap(json) {
+	function decodeKeymap(json, opts = {}) {
 		if (json === null || typeof json !== "object") throw new Error("KeymapEngine.decodeKeymap: keymap JSON オブジェクトを渡してください");
 		const obj = json;
 		assertFormatVersion(obj.formatVersion);
-		return expandKeymap(decodeKeymap$1(obj));
+		return expandKeymap(decodeKeymap$1(obj, opts), opts);
 	}
 	function assertFormatVersion(raw) {
-		const v = typeof raw === "string" && raw.length > 0 ? raw : "1.0";
+		const v = typeof raw === "string" && raw.length > 0 ? raw : "";
 		const major = Number.parseInt(v.split(".")[0], 10);
 		if (!Number.isFinite(major) || major !== SUPPORTED_MAJOR) throw new Error(`KeymapEngine: 非対応の formatVersion "${v}"（このエンジンは ${SUPPORTED_MAJOR}.x に対応）`);
 	}
@@ -2349,7 +3018,9 @@ var KeymapEngine = (function () {
 	//#endregion
 	exports.InputEngine = InputEngine;
 	exports.KeyModifierFlags = KeyModifierFlags;
+	exports.SUPPORTED_SEMANTICS = SUPPORTED_SEMANTICS;
 	exports.browserCodeToHID = browserCodeToHID;
+	exports.collectDiagnostics = collectDiagnostics;
 	exports.createBuiltinRomajiJIS = createBuiltinRomajiJIS;
 	exports.createBuiltinRomajiUS = createBuiltinRomajiUS;
 	exports.decodeKeymap = decodeKeymap;
@@ -2358,7 +3029,9 @@ var KeymapEngine = (function () {
 	exports.hidCodeToName = hidCodeToName;
 	exports.hidNameToBrowserCode = hidNameToBrowserCode;
 	exports.hidNameToCode = hidNameToCode;
+	exports.isSatisfiedBy = isSatisfiedBy;
 	exports.keyEventFromBrowser = keyEventFromBrowser;
+	exports.requiredInputLevel = requiredInputLevel;
 	exports.version = version;
 });
 
@@ -2375,7 +3048,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.18.0";
+	const HECHIMA_VERSION = "0.19.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3293,12 +3966,19 @@ var Hechima = (function () {
 						engine.reset();
 					} catch {}
 					engine.onHostAction = null;
+					engine.hostPhase = null;
 				}
 				clear();
 				cb.hide();
 				engine = eng ?? null;
 				engineKeyOf = keyOf ?? null;
-				if (engine) engine.onHostAction = (action) => handleEngineAction(action);
+				if (engine) {
+					engine.onHostAction = (action) => handleEngineAction(action);
+					engine.hostPhase = () => {
+						if (segs) return "selecting";
+						return composing() || engine.isComposing ? "composing" : "idle";
+					};
+				}
 			},
 			pumpEngine,
 			selectCandidate(index) {
@@ -3569,9 +4249,9 @@ var Hechima = (function () {
 
 // ==== plugin ====
 
-// ==== bundled keymaps (12) ====
+// ==== bundled keymaps (7) ====
 // 自動生成: web/public/keymaps/*.json を埋め込んだもの。編集しないこと。
-const BUNDLED_KEYMAPS = {"azik_jis":{"formatVersion":"1.0","name":"AZIK(JIS)","author":"木村清","description":"AZIK 拡張ローマ字入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"}},"azik_us":{"formatVersion":"1.0","name":"AZIK(US)","author":"木村清","description":"AZIK 拡張ローマ字入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"}},"naginata_jis":{"formatVersion":"1.0","name":"薙刀式(JIS)","author":"大岡俊彦","description":"薙刀式v18同時打鍵入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"space"},"shiftKeys":[{"key":"space","singleTapAction":"convert"}],"judgment":"mutual","simultaneousWindow":0.08,"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","space+E":"り","space+R":"め","space+W":"ね","space+I":"よ","space+O":"え","space+P":"ゆ","space+U":"さ","space+A":"せ","space+D":"に","space+F":"ま","space+G":"ち","space+H":"や","space+J":"の","space+K":"も","space+L":"つ","space+S":"み","space+semicolon":"ふ","space+B":"ぬ","space+C":"を","space+N":"お","space+X":"ひ","space+Z":"ほ","space+comma":"む","space+dot":"わ","space+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","space+M":"insertAndConfirm:。","space+T":"editSegmentLeft","space+V":"insertAndConfirm:、","space+Y":"editSegmentRight"},"englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}}},"naginata_us":{"formatVersion":"1.0","name":"薙刀式(US)","author":"大岡俊彦","description":"薙刀式v18同時打鍵入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"space"},"shiftKeys":[{"key":"space","singleTapAction":"convert"}],"judgment":"mutual","simultaneousWindow":0.08,"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","space+E":"り","space+R":"め","space+W":"ね","space+I":"よ","space+O":"え","space+P":"ゆ","space+U":"さ","space+A":"せ","space+D":"に","space+F":"ま","space+G":"ち","space+H":"や","space+J":"の","space+K":"も","space+L":"つ","space+S":"み","space+semicolon":"ふ","space+B":"ぬ","space+C":"を","space+N":"お","space+X":"ひ","space+Z":"ほ","space+comma":"む","space+dot":"わ","space+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","space+M":"insertAndConfirm:。","space+T":"editSegmentLeft","space+V":"insertAndConfirm:、","space+Y":"editSegmentRight"},"englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}}},"nicola_jis":{"formatVersion":"1.0","name":"NICOLA(JIS)","author":"日本語入力コンソーシアム","description":"NICOLA 親指シフト入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","lang2":"leftThumb","lang1":"rightThumb","international5":"leftThumb","international4":"rightThumb"},"shiftKeys":[{"key":"leftThumb"},{"key":"rightThumb"}],"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","leftThumb+Q":"ぁ","leftThumb+W":"え","leftThumb+E":"り","leftThumb+R":"ゃ","leftThumb+T":"れ","leftThumb+Y":"ぱ","leftThumb+U":"ぢ","leftThumb+I":"ぐ","leftThumb+O":"づ","leftThumb+P":"ぴ","leftThumb+semicolon":"ー","leftThumb+A":"を","leftThumb+S":"あ","leftThumb+D":"な","leftThumb+F":"ゅ","leftThumb+G":"も","leftThumb+H":"ば","leftThumb+J":"ど","leftThumb+K":"ぎ","leftThumb+L":"ぽ","leftThumb+Z":"ぅ","leftThumb+X":"ー","leftThumb+C":"ろ","leftThumb+V":"や","leftThumb+B":"ぃ","leftThumb+N":"ぷ","leftThumb+M":"ぞ","leftThumb+comma":"ぺ","leftThumb+dot":"ぼ","leftThumb+slash":"ぉ","rightThumb+Q":"ぁ","rightThumb+W":"が","rightThumb+E":"だ","rightThumb+R":"ご","rightThumb+T":"ざ","rightThumb+Y":"よ","rightThumb+U":"に","rightThumb+I":"る","rightThumb+O":"ま","rightThumb+P":"ぇ","rightThumb+semicolon":"っ","rightThumb+A":"ゔ","rightThumb+S":"じ","rightThumb+D":"で","rightThumb+F":"げ","rightThumb+G":"ぜ","rightThumb+H":"み","rightThumb+J":"お","rightThumb+K":"の","rightThumb+L":"ょ","rightThumb+Z":"ぅ","rightThumb+X":"び","rightThumb+C":"ず","rightThumb+V":"ぶ","rightThumb+B":"べ","rightThumb+N":"ぬ","rightThumb+M":"ゆ","rightThumb+comma":"む","rightThumb+dot":"わ","rightThumb+slash":"ぉ"},"specialActions":{},"simultaneousWindow":0.1}}},"nicola_us":{"formatVersion":"1.0","name":"NICOLA(US)","author":"日本語入力コンソーシアム","description":"NICOLA 親指シフト入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash","space":"leftThumb","rightAlt":"rightThumb","international5":"leftThumb","international4":"rightThumb","lang2":"leftThumb","lang1":"rightThumb"},"shiftKeys":[{"key":"leftThumb","singleTapAction":"convert"},{"key":"rightThumb"}],"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","leftThumb+Q":"ぁ","leftThumb+W":"え","leftThumb+E":"り","leftThumb+R":"ゃ","leftThumb+T":"れ","leftThumb+Y":"ぱ","leftThumb+U":"ぢ","leftThumb+I":"ぐ","leftThumb+O":"づ","leftThumb+P":"ぴ","leftThumb+semicolon":"ー","leftThumb+A":"を","leftThumb+S":"あ","leftThumb+D":"な","leftThumb+F":"ゅ","leftThumb+G":"も","leftThumb+H":"ば","leftThumb+J":"ど","leftThumb+K":"ぎ","leftThumb+L":"ぽ","leftThumb+Z":"ぅ","leftThumb+X":"ー","leftThumb+C":"ろ","leftThumb+V":"や","leftThumb+B":"ぃ","leftThumb+N":"ぷ","leftThumb+M":"ぞ","leftThumb+comma":"ぺ","leftThumb+dot":"ぼ","leftThumb+slash":"ぉ","rightThumb+Q":"ぁ","rightThumb+W":"が","rightThumb+E":"だ","rightThumb+R":"ご","rightThumb+T":"ざ","rightThumb+Y":"よ","rightThumb+U":"に","rightThumb+I":"る","rightThumb+O":"ま","rightThumb+P":"ぇ","rightThumb+semicolon":"っ","rightThumb+A":"ゔ","rightThumb+S":"じ","rightThumb+D":"で","rightThumb+F":"げ","rightThumb+G":"ぜ","rightThumb+H":"み","rightThumb+J":"お","rightThumb+K":"の","rightThumb+L":"ょ","rightThumb+Z":"ぅ","rightThumb+X":"び","rightThumb+C":"ず","rightThumb+V":"ぶ","rightThumb+B":"べ","rightThumb+N":"ぬ","rightThumb+M":"ゆ","rightThumb+comma":"む","rightThumb+dot":"わ","rightThumb+slash":"ぉ"},"specialActions":{},"simultaneousWindow":0.1}}},"romaji_colemak_jis":{"formatVersion":"1.0","name":"ローマ字(Colemak JIS)","author":"Shai Coleman","license":"Unlicense","description":"Colemak 配列でのローマ字入力（JIS キーボード）。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","~":"〜"}},"keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"}},"romaji_colemak_us":{"formatVersion":"1.0","name":"ローマ字(Colemak US)","author":"Shai Coleman","license":"Unlicense","description":"Colemak 配列でのローマ字入力（US キーボード）。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜"}},"keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":[],"inputBase":"romaji","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"}},"romaji_jis":{"formatVersion":"1.0","name":"ローマ字(QWERTY JIS)","description":"標準ローマ字入力（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential"},"inputBase":"romaji","modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode"}},"romaji_us":{"formatVersion":"1.0","name":"ローマ字(QWERTY US)","description":"標準ローマ字入力（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential"},"inputBase":"romaji","modeKeys":{"ctrl+space":"toggleInputMode"}},"tsuki2-263_jis":{"formatVersion":"1.0","name":"月配列2-263(JIS)","description":"月配列2-263 前置シフト方式（JIS キーボード）","keyboardLayout":"jis","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","'":"＇","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"lang2":"switchToEnglish","lang1":"switchToJapanese","ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":["d","k"],"inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）— JIS では US の [ → @、' → : に対応","a":"は","s":"か","@":"ち","f":"と","g":"た","h":"く","j":"う",":":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d@":"「","d:":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k@":"「","k:":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","@l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"}},"tsuki2-263_us":{"formatVersion":"1.0","name":"月配列2-263(US)","description":"月配列2-263 前置シフト方式（US キーボード）","keyboardLayout":"us","targetScript":"hiragana","behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"},"prefixShiftKeys":["d","k"],"inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"}}};
+const BUNDLED_KEYMAPS = {"azik":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"AZIK","description":"AZIK 拡張ローマ字入力","author":"木村清","targetScript":"hiragana","inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"},"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"naginata":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"薙刀式","description":"薙刀式v18同時打鍵入力","author":"大岡俊彦","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","holder1+E":"り","holder1+R":"め","holder1+W":"ね","holder1+I":"よ","holder1+O":"え","holder1+P":"ゆ","holder1+U":"さ","holder1+A":"せ","holder1+D":"に","holder1+F":"ま","holder1+G":"ち","holder1+H":"や","holder1+J":"の","holder1+K":"も","holder1+L":"つ","holder1+S":"み","holder1+semicolon":"ふ","holder1+B":"ぬ","holder1+C":"を","holder1+N":"お","holder1+X":"ひ","holder1+Z":"ほ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","holder1+M":"insertAndConfirm:。","holder1+T":"editSegmentLeft","holder1+V":"insertAndConfirm:、","holder1+Y":"editSegmentRight"},"judgment":"mutual","englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}},"requires":["judgment:mutual","roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"nicola":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"NICOLA","description":"NICOLA 親指シフト入力","author":"日本語入力コンソーシアム","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["lang2","international5"]},"holder2":{"label":"右親指","keys":["lang1","international4"]}},"layouts":{"us":{"holder1":["space"],"holder2":["rightAlt"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"ぱ","holder1+U":"ぢ","holder1+I":"ぐ","holder1+O":"づ","holder1+P":"ぴ","holder1+semicolon":"ー","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"ば","holder1+J":"ど","holder1+K":"ぎ","holder1+L":"ぽ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぷ","holder1+M":"ぞ","holder1+comma":"ぺ","holder1+dot":"ぼ","holder1+slash":"ぉ","holder2+Q":"ぁ","holder2+W":"が","holder2+E":"だ","holder2+R":"ご","holder2+T":"ざ","holder2+Y":"よ","holder2+U":"に","holder2+I":"る","holder2+O":"ま","holder2+P":"ぇ","holder2+semicolon":"っ","holder2+A":"ゔ","holder2+S":"じ","holder2+D":"で","holder2+F":"げ","holder2+G":"ぜ","holder2+H":"み","holder2+J":"お","holder2+K":"の","holder2+L":"ょ","holder2+Z":"ぅ","holder2+X":"び","holder2+C":"ず","holder2+V":"ぶ","holder2+B":"べ","holder2+N":"ぬ","holder2+M":"ゆ","holder2+comma":"む","holder2+dot":"わ","holder2+slash":"ぉ"},"specialActions":{},"judgment":"window","simultaneousWindow":0.1}},"requires":["roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"}},"oyayubi_pyun_1key":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"親指ぴゅん 1キー版","description":"DOS/V 用の親指シフトエミュレータ「親指ぴゅん」（遠藤諭 / Hortense S. Endoh、OKPV.ASM v0.80, 1992）の -p（ＡＴキーボード）モードに倣った配列。AT/101 には無変換キーが無いため、親指シフトはスペース 1 本の単独シフトになり、交差シフトの濁音は無効化される。濁音・半濁音は L 字エンター左のキー（スキャンコード 0x1b）で後付けする。","author":"遠藤諭（Hortense S. Endoh）","basedOn":"NICOLA","addedAt":"2026-08-01","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"_comment_single":"単打（kanatbl）","Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","semicolon":"ん","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","_comment_shift":"スペース同時押し（kanasfttbl）。-p では交差シフトの濁音が無効化され、親指シフトは常にシフト面","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"よ","holder1+U":"に","holder1+I":"る","holder1+O":"ま","holder1+P":"ぇ","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"み","holder1+J":"お","holder1+K":"の","holder1+L":"ょ","holder1+semicolon":"っ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぬ","holder1+M":"ゆ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"ぉ"},"specialActions":{},"judgment":"mutual"}},"requires":["judgment:mutual","roles","postModify","actionGuard"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","bracketRight":{"action":"postModify:dakuten","when":["composing"]},"shift+bracketRight":{"action":"postModify:handakuten","when":["composing"]},"lang1":"switchToJapanese","lang2":"switchToEnglish"}},"romaji":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字(QWERTY JIS)","description":"標準ローマ字入力","targetScript":"hiragana","inputBase":"romaji","behavior":{"type":"sequential","characterMap":{}},"modeKeys":{"ctrl+space":"toggleInputMode","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"romaji_colemak":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字(Colemak JIS)","description":"Colemak 配列でのローマ字入力。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","author":"Shai Coleman","license":"Unlicense","targetScript":"hiragana","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"},"inputBase":"romaji","keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"tsuki2-263":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"月配列2-263","description":"月配列2-263 前置シフト方式","targetScript":"hiragana","base":"positional","inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"},"prefixShiftKeys":["d","k"],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","'":"＇"}},"requires":["positionalBase"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}}};
 
 
 // ==== src/assets.js ====
@@ -4731,19 +5411,26 @@ class HechimaIME {
      * 薙刀式なら space）。設定 UI が割り当て先を出すのに使う。
      */
     shiftRoles(id = this.keymapId) {
+        // v2: 役は roles が宣言する（v1 は behavior.config.shiftKeys だった）
         const json = this.keymapJson(id);
-        const cfg = json?.behavior?.config;
-        if (!cfg?.shiftKeys) return [];
-        return cfg.shiftKeys.map((sk) => sk.key);
+        return Object.keys(json?.roles ?? {});
     }
 
     /** 役 → 現在の物理キー（browser code）。上書きが無ければ JSON の宣言から引く */
     roleCode(role, id = this.keymapId) {
         const override = this.plugin.settings.roleKeys?.[role];
         if (override) return override;
-        const hidToKey = this.keymapJson(id)?.behavior?.config?.hidToKey ?? {};
-        for (const [hidName, r] of Object.entries(hidToKey)) {
-            if (r !== role) continue;
+        // v2: 既定の候補は roles[].keys（+ layouts の追加）。先頭の「届く」候補を出す
+        const json = this.keymapJson(id);
+        // **レイアウト固有のキーを先に見る。** roles[].keys は全レイアウト共通の既定で、
+        // US キーボードに無い lang2 なども並んでいる。US を選んでいるのに Lang2 と
+        // 表示されては、設定 UI として嘘になる
+        const layout = this.plugin.settings.keyboardLayout ?? "jis";
+        const keys = [
+            ...(json?.layouts?.[layout]?.[role] ?? []),
+            ...(json?.roles?.[role]?.keys ?? []),
+        ];
+        for (const hidName of keys) {
             const code = KeymapEngine.hidNameToBrowserCode?.(hidName);
             if (code) return code;
         }
@@ -4799,33 +5486,34 @@ class HechimaIME {
         const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         // **親指キー等の物理割当を設定で上書きする。**
-        // 配列が定義すべきは役（leftThumb / rightThumb / space）であって、それをどの物理キーに
-        // 置くかは環境の関心事 —— OS が奪う（iPadOS の 英数/かな）・キーボードが違う・
-        // 各人の好み、で変わる（docs/keymap-v2-sketch.md §3.6 の「役割バインド」型）。
-        // JSON は触らず、decode 前に hidToKey を差し替える。
+        // 配列が定義するのは役（holder1 / holder2 …）で、それをどの物理キーに置くかは
+        // 環境の関心事 —— OS が奪う（iPadOS の 英数/かな）・キーボードが違う・各人の好み、
+        // で変わる。**v2 では roleOverrides がエンジンの正式 API**なので、JSON を
+        // 組み立て直す必要が無くなった（v1 では hidToKey を手で差し替えていた）。
         const overrides = this.plugin.settings.roleKeys ?? {};
-        const roles = new Set((json.behavior?.config?.shiftKeys ?? []).map((sk) => sk.key));
-        let effective = json;
-        const applicable = Object.entries(overrides).filter(([role]) => roles.has(role));
-        if (applicable.length) {
-            const cfg = { ...json.behavior.config, hidToKey: { ...json.behavior.config.hidToKey } };
-            for (const [role, code] of applicable) {
-                // その役の既存割当を外し、指定された物理キーだけを割り当てる
-                for (const [hidName, r] of Object.entries(cfg.hidToKey)) {
-                    if (r === role) delete cfg.hidToKey[hidName];
-                }
-                const hid = KeymapEngine.browserCodeToHID?.(code);
-                const name = hid === undefined ? null : KeymapEngine.hidCodeToName?.(hid);
-                if (name) cfg.hidToKey[name] = role;
-            }
-            effective = { ...json, behavior: { ...json.behavior, config: cfg } };
+        const roleNames = new Set(Object.keys(json.roles ?? {}));
+        const roleOverrides = new Map();
+        for (const [role, code] of Object.entries(overrides)) {
+            if (!roleNames.has(role)) continue;
+            const hid = KeymapEngine.browserCodeToHID?.(code);
+            const name = hid === undefined ? null : KeymapEngine.hidCodeToName?.(hid);
+            if (name) roleOverrides.set(role, [name]);
         }
-        const expanded = KeymapEngine.decodeKeymap(effective);
-        // chord 配列の hidToKey に載っている物理キーは**配列の領分**。ホストのモード切替
-        // （変換=IME ON 等）より優先してエンジンへ流す。NICOLA JIS の親指シフト
-        // （無変換/変換）がホストのモード切替に食われて効かなかった事故の対策。
-        const hidToKey = effective.behavior?.config?.hidToKey ?? {};
-        for (const name of Object.keys(hidToKey)) {
+        // v2: レイアウト（layouts の追加バインド）はホストが決める。
+        // **実際にキーが届くかを知っているのはホストだけ**（keymap-v2-draft.md §6.1）
+        const layout = this.plugin.settings.keyboardLayout ?? "jis";
+        const opts = { layout, ...(roleOverrides.size ? { roleOverrides } : {}) };
+        const expanded = KeymapEngine.decodeKeymap(json, opts);
+        // 役に割り当たった物理キーは**配列の領分**。ホストのモード切替（変換=IME ON 等）
+        // より優先してエンジンへ流す。NICOLA JIS の親指シフト（無変換/変換）がホストの
+        // モード切替に食われて効かなかった事故の対策。
+        for (const names of expanded.roleBindings?.values() ?? []) {
+            for (const name of names) {
+                const code = KeymapEngine.hidNameToBrowserCode?.(name);
+                if (code) this.chordCodes.add(code);
+            }
+        }
+        for (const name of Object.keys(json.behavior?.config?.hidToKey ?? {})) {
             const code = KeymapEngine.hidNameToBrowserCode?.(name);
             if (code) this.chordCodes.add(code);
         }
@@ -5425,7 +6113,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
     async onload() {
         this.settings = Object.assign(
-            { keymapId: "builtin_romaji", roleKeys: {} },
+            { keymapId: "builtin_romaji", keyboardLayout: "jis", roleKeys: {} },
             await this.loadSettingsWithMigration()
         );
         // **旧 id の版が同時に動いていないか。** 両方が有効だと 2 つの IME が打鍵を
@@ -5441,6 +6129,19 @@ module.exports = class HechimaProbePlugin extends Plugin {
         // （句読点の即時確定・BS 後の pending 復帰）があるため、旧既定のままの設定は
         // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
         if (this.settings.keymapId === "romaji_jis") this.settings.keymapId = "builtin_romaji";
+        // keymap v2 で配列が JIS/US に統合され、名前から接尾辞が消えた（naginata_us → naginata）
+        const legacyId = /^(azik|naginata|nicola|tsuki2-263|romaji_colemak|oyayubi_pyun_1key)_(jis|us)$/
+            .exec(this.settings.keymapId ?? "");
+        if (legacyId) this.settings.keymapId = legacyId[1];
+        // 役の正規名も機能ベースになった（leftThumb → holder1）。親指キーの割り当てを引き継ぐ。
+        // **space は移行しない** —— v2 では薙刀式の space も holder1 になるため、NICOLA の
+        // 左親指と衝突する。roleKeys を配列ごとに持つべきという別の課題（TODO.md）
+        const roleRename = { leftThumb: "holder1", rightThumb: "holder2" };
+        for (const [oldName, newName] of Object.entries(roleRename)) {
+            const code = this.settings.roleKeys?.[oldName];
+            if (code && !this.settings.roleKeys[newName]) this.settings.roleKeys[newName] = code;
+            if (code) delete this.settings.roleKeys[oldName];
+        }
         this.engine = new HechimaEngine(this.app, this.manifest);
         // **旧フォルダからの引き継ぎは、有効化した時点で終わらせる。** エンジンの起動を
         // 待つと「入れたがまだ日本語入力を ON にしていない」人が旧フォルダを消したときに
@@ -6164,8 +6865,18 @@ module.exports = class HechimaProbePlugin extends Plugin {
     }
 };
 
-/** 役の表示名。JSON に出てくる役名をそのまま出すと分かりにくいので */
+/**
+ * 役の表示名。JSON に出てくる役名をそのまま出すと分かりにくいので。
+ *
+ * keymap v2 の正規名は機能ベース（holder1 / holder2）。身体部位を名前に焼き込むと
+ * フットペダルやゲームパッドで嘘になるため（keymap-v2-draft.md D1）。
+ * v1 由来の別名も引けるようにしておく。**配列が `roles[].label` を書いていれば
+ * そちらを優先する**（`roleLabel`）。
+ */
 const ROLE_LABELS = {
+    holder1: "左親指シフト",
+    holder2: "右親指シフト",
+    holder3: "第 3 シフト",
     leftThumb: "左親指シフト",
     rightThumb: "右親指シフト",
     space: "シフトキー（SandS）",
@@ -6300,6 +7011,30 @@ class HechimaSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.plugin.applyKeymap();
                     this.display(); // 配列が変わると役の顔ぶれも変わる
+                });
+            });
+
+        // keymap v2 で配列と物理キーボードが分かれた。**プルダウンも 2 つに分ける** ——
+        // 選ぶものが違うから。配列 = 打鍵をかなに変換する規則、キーボード = 役をどの
+        // 物理キーに置くかの既定（`layouts`）。v1 までは naginata_jis / naginata_us と
+        // 1 つのプルダウンに混ざっていて、方式が 6 つなのに 12 件並んでいた。
+        new Setting(containerEl)
+            .setName("キーボード")
+            .setDesc(
+                "手元のキーボードの種類。配列が決めるのは「左親指」などの役で、" +
+                    "それをどの物理キーに置くかはキーボードで変わります" +
+                    "（NICOLA の親指は JIS なら無変換/変換、US ならスペース/右Alt）。" +
+                    "既定が届かないときは下の「押して割り当て」で変えられます"
+            )
+            .addDropdown((d) => {
+                d.addOption("jis", "JIS（日本語配列）");
+                d.addOption("us", "US（英語配列）");
+                d.setValue(this.plugin.settings.keyboardLayout ?? "jis");
+                d.onChange(async (v) => {
+                    this.plugin.settings.keyboardLayout = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.applyKeymap();
+                    this.display(); // 役の既定キーの表示が変わる
                 });
             });
 
