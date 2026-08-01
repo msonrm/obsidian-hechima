@@ -5455,7 +5455,15 @@ class HechimaIME {
         try {
             listing = await adapter.list(VAULT_KEYMAP_DIR);
         } catch {
-            this.vaultKeymaps = next; // フォルダが無いのが普通
+            // **空フォルダを用意しておく。** 「ここに置けば読まれる」が一目で分かるし、
+            // Files アプリや Finder から放り込むだけで足せる。無いと、まず作るところから
+            // 始めることになって「自分の配列を試す」の敷居が上がる
+            try {
+                if (!(await adapter.exists(VAULT_KEYMAP_DIR))) await adapter.mkdir(VAULT_KEYMAP_DIR);
+            } catch {
+                // 作れなくても致命的ではない（同梱配列だけで動く）
+            }
+            this.vaultKeymaps = next;
             return;
         }
         for (const path of listing.files ?? []) {
