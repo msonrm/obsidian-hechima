@@ -7039,6 +7039,25 @@ class HechimaSettingTab extends PluginSettingTab {
                 });
             });
 
+
+
+        // **何を追加したのかがその場で分かるように、名前を出す。** 件数だけでは
+        // 「入ったのか / どれが入ったのか」が分からない（iPad で実機報告）
+        const vaultNames = [...this.plugin.ime.vaultKeymaps.values()].map((j, i) => j?.name ?? `#${i + 1}`);
+        const vaultLine = containerEl.createEl("p", {
+            text: vaultNames.length
+                ? `vault から ${vaultNames.length} 件: ${vaultNames.join("、")}`
+                : `vault の配列はまだありません（${VAULT_KEYMAP_DIR}/ に JSON を置いてください）`,
+        });
+        vaultLine.style.color = "var(--text-muted)";
+        vaultLine.style.fontSize = "var(--font-ui-smaller, .85em)";
+        vaultLine.style.marginTop = "-6px";
+        for (const err of this.plugin.ime.keymapErrors) {
+            const e = containerEl.createEl("p", { text: `読めません — ${err}` });
+            e.style.color = "var(--text-error)";
+            e.style.fontSize = "var(--font-ui-smaller, .85em)";
+        }
+
         // keymap v2 で配列と物理キーボードが分かれた。**プルダウンも 2 つに分ける** ——
         // 選ぶものが違うから。配列 = 打鍵をかなに変換する規則、キーボード = 役をどの
         // 物理キーに置くかの既定（`layouts`）。v1 までは naginata_jis / naginata_us と
@@ -7063,22 +7082,6 @@ class HechimaSettingTab extends PluginSettingTab {
                 });
             });
 
-        // **何を追加したのかがその場で分かるように、名前を出す。** 件数だけでは
-        // 「入ったのか / どれが入ったのか」が分からない（iPad で実機報告）
-        const vaultNames = [...this.plugin.ime.vaultKeymaps.values()].map((j, i) => j?.name ?? `#${i + 1}`);
-        const vaultLine = containerEl.createEl("p", {
-            text: vaultNames.length
-                ? `vault から ${vaultNames.length} 件: ${vaultNames.join("、")}`
-                : `vault の配列はまだありません（${VAULT_KEYMAP_DIR}/ に JSON を置いてください）`,
-        });
-        vaultLine.style.color = "var(--text-muted)";
-        vaultLine.style.fontSize = "var(--font-ui-smaller, .85em)";
-        vaultLine.style.marginTop = "-6px";
-        for (const err of this.plugin.ime.keymapErrors) {
-            const e = containerEl.createEl("p", { text: `読めません — ${err}` });
-            e.style.color = "var(--text-error)";
-            e.style.fontSize = "var(--font-ui-smaller, .85em)";
-        }
 
         // 役 → 物理キーの割り当て（この配列がシフトを使うときだけ出す）
         const roles = this.plugin.ime.shiftRoles();
