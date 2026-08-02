@@ -1611,8 +1611,9 @@ var KeymapEngine = (function () {
 			where: "roles",
 			key: name
 		});
-		const inputMappings = expandInputMappings(def.inputBase, def.suffixRules, def.inputMappings);
+		const { mappings: inputMappings, baseOnlyKeys } = expandInputMappings(def.inputBase, def.suffixRules, def.inputMappings);
 		const prefixSet = buildPrefixSet(inputMappings);
+		const displayRawKeys = buildDisplayRawKeys(baseOnlyKeys, prefixSet);
 		const charMapBase = def.inputBase === "romaji" ? h2zMapUS : {};
 		const characterMap = def.behavior.type === "sequential" ? {
 			...charMapBase,
@@ -1626,6 +1627,7 @@ var KeymapEngine = (function () {
 			unboundRoles: roles.unbound,
 			inputMappings,
 			prefixSet,
+			displayRawKeys,
 			characterMap,
 			modeKeys: def.modeKeys ?? [],
 			keyRemap: def.keyRemap ?? {},
@@ -1661,11 +1663,42 @@ var KeymapEngine = (function () {
 			}
 		}
 		const result = { ...base };
-		for (const [k, v] of Object.entries(suffixExpansions)) result[k] = v;
-		if (explicitMappings) {
-			for (const [k, v] of Object.entries(explicitMappings)) if (!k.startsWith("_comment")) result[k] = v;
+		const baseOnlyKeys = new Set(Object.keys(base));
+		for (const [k, v] of Object.entries(suffixExpansions)) {
+			result[k] = v;
+			baseOnlyKeys.delete(k);
 		}
-		return result;
+		if (explicitMappings) {
+			for (const [k, v] of Object.entries(explicitMappings)) if (!k.startsWith("_comment")) {
+				result[k] = v;
+				baseOnlyKeys.delete(k);
+			}
+		}
+		return {
+			mappings: result,
+			baseOnlyKeys
+		};
+	}
+	/**
+	* 未確定バッファを**素のまま**見せるキー（かなへ仮解決しない）。
+	*
+	* 対象は「一致しているのに、より長いキーの接頭辞でもある」もの。このとき仮解決を見せるか
+	* どうかは、その割り当てが**配列の意思か既定の受け皿か**で変わる:
+	*
+	* - 配列が明示したキー（AZIK の `q`=ん・`kk`=きん、月配列の `q`=そ）は**それ自体が完成したかな**。
+	*   1 打鍵 1 かなの配列で素のアルファベットを見せても読めないので、仮解決を見せる（従来どおり）
+	* - 標準ローマ字が既定で敷いた分は**続きが来なかったときの救済**。該当するのは撥音の `n` だけで、
+	*   打った人の意図は多く「な行」。ここで「ん」を見せると次の打鍵で「な」へ巻き戻って見える
+	*   （内蔵ローマ字 = hechima の `resolveRomaji` も `n` のまま見せる）
+	*
+	* 原典の Swift `pendingBufferText` は月配列などのカスタムテーブル専用で、
+	* 標準ローマ字は AzooKey の trie を通るためこの経路に来なかった。web は両方を
+	* 同じ経路に流したので、この切り分けが要る。
+	*/
+	function buildDisplayRawKeys(baseOnlyKeys, prefixSet) {
+		const keys = /* @__PURE__ */ new Set();
+		for (const k of baseOnlyKeys) if (prefixSet.has(k)) keys.add(k);
+		return keys;
 	}
 	/** Build a set of all prefixes of mapping keys (for greedy longest-match) */
 	function buildPrefixSet(mappings) {
@@ -1928,7 +1961,7 @@ var KeymapEngine = (function () {
 	}
 	//#endregion
 	//#region src/engine/version.ts
-	const ENGINE_VERSION = "2.0.0";
+	const ENGINE_VERSION = "2.1.0";
 	//#endregion
 	//#region src/engine/key-router.ts
 	/** Route a KeyEvent to a KeyAction based on the expanded keymap */
@@ -2071,12 +2104,14 @@ var KeymapEngine = (function () {
 			this.buffer = "";
 			this.mappings = {};
 			this.prefixSet = /* @__PURE__ */ new Set();
+			this.displayRawKeys = /* @__PURE__ */ new Set();
 			this.resolvedKana = "";
 		}
 		/** Update the mapping tables (call when keymap changes) */
-		setMappings(mappings, prefixSet) {
+		setMappings(mappings, prefixSet, displayRawKeys = /* @__PURE__ */ new Set()) {
 			this.mappings = mappings;
 			this.prefixSet = prefixSet;
+			this.displayRawKeys = displayRawKeys;
 			this.buffer = "";
 			this.resolvedKana = "";
 		}
@@ -2090,11 +2125,6 @@ var KeymapEngine = (function () {
 		*  Returns any remaining kana. */
 		flush() {
 			if (this.buffer.length === 0) return "";
-			const exact = this.mappings[this.buffer];
-			if (exact !== void 0) {
-				this.buffer = "";
-				return exact;
-			}
 			return this.drain(true);
 		}
 		/** Delete the last character from the buffer.
@@ -2114,31 +2144,20 @@ var KeymapEngine = (function () {
 		get pending() {
 			return this.buffer;
 		}
-		/** Get pending buffer resolved as kana for display (pendingBufferText port) */
+		/** Get pending buffer resolved as kana for display (pendingBufferText port)
+		*
+		*  **解決の本体は drain と同じ**（`resolve` を共有）。違うのは「続きを待つ」ところに
+		*  来たときの見せ方だけで、そこは `displayRawKeys`（配列の意思か既定の受け皿か）で決める。
+		*
+		*  かつてここだけが独自に exact 一致を優先していたため、ローマ字の `n` が「ん」に化け、
+		*  次に `a` を打つと「な」へ巻き戻って見えた（バッファ側は正しく `n` を保持していたので、
+		*  **表示だけの不一致**だった）。同じ表に 2 つの解決規則を置かないこと。 */
 		get pendingDisplay() {
-			if (this.buffer.length === 0) return "";
-			const exact = this.mappings[this.buffer];
-			if (exact !== void 0) return exact;
-			let result = "";
-			let remaining = this.buffer;
-			while (remaining.length > 0) {
-				let matched = false;
-				for (let len = remaining.length; len >= 1; len--) {
-					const prefix = remaining.slice(0, len);
-					const kana = this.mappings[prefix];
-					if (kana !== void 0) {
-						result += kana;
-						remaining = remaining.slice(len);
-						matched = true;
-						break;
-					}
-				}
-				if (!matched) {
-					result += remaining[0];
-					remaining = remaining.slice(1);
-				}
-			}
-			return result;
+			const { kana, rest } = this.resolve(this.buffer, false);
+			if (rest.length === 0) return kana;
+			const exact = this.mappings[rest];
+			if (exact !== void 0 && !this.displayRawKeys.has(rest)) return kana + exact;
+			return kana + rest;
 		}
 		/** Whether the buffer is empty */
 		get isEmpty() {
@@ -2152,32 +2171,47 @@ var KeymapEngine = (function () {
 		/** Drain the buffer using greedy longest-match + backtracking.
 		*  Port of drainSequentialBuffer (InputManager.swift L477-515) */
 		drain(force = false) {
+			const { kana, rest } = this.resolve(this.buffer, force);
+			this.buffer = rest;
+			return kana;
+		}
+		/** 解決規則の本体。**非破壊**（バッファを触らない）なので表示側からも呼べる。
+		*
+		*  戻り値 = `{ kana: 解決できた分, rest: 続きを待って残った分 }`。
+		*  `force`（確定直前の flush）では待たずに出し切るので `rest` は必ず空になる。 */
+		resolve(buffer, force) {
 			let output = "";
-			while (this.buffer.length > 0) {
-				const hasMatch = this.mappings[this.buffer] !== void 0;
-				const isPrefix = this.prefixSet.has(this.buffer);
+			while (buffer.length > 0) {
+				const hasMatch = this.mappings[buffer] !== void 0;
+				const isPrefix = this.prefixSet.has(buffer);
 				if (hasMatch && (!isPrefix || force)) {
-					output += this.mappings[this.buffer];
-					this.buffer = "";
-				} else if (isPrefix && !force) return output;
+					output += this.mappings[buffer];
+					buffer = "";
+				} else if (isPrefix && !force) return {
+					kana: output,
+					rest: buffer
+				};
 				else {
 					let resolved = false;
-					for (let len = this.buffer.length - 1; len >= 1; len--) {
-						const prefix = this.buffer.slice(0, len);
+					for (let len = buffer.length - 1; len >= 1; len--) {
+						const prefix = buffer.slice(0, len);
 						if (this.mappings[prefix] !== void 0) {
 							output += this.mappings[prefix];
-							this.buffer = this.buffer.slice(len);
+							buffer = buffer.slice(len);
 							resolved = true;
 							break;
 						}
 					}
 					if (!resolved) {
-						output += this.buffer[0];
-						this.buffer = this.buffer.slice(1);
+						output += buffer[0];
+						buffer = buffer.slice(1);
 					}
 				}
 			}
-			return output;
+			return {
+				kana: output,
+				rest: ""
+			};
 		}
 	};
 	//#endregion
@@ -2644,14 +2678,14 @@ var KeymapEngine = (function () {
 			this.onHostAction = null;
 			this.hostPhase = null;
 			this.keymap = keymap;
-			this.buffer.setMappings(keymap.inputMappings, keymap.prefixSet);
+			this.buffer.setMappings(keymap.inputMappings, keymap.prefixSet, keymap.displayRawKeys);
 			this.setupChordBuffer(keymap);
 		}
 		/** Switch to a different keymap */
 		setKeymap(keymap) {
 			this.confirmComposition();
 			this.keymap = keymap;
-			this.buffer.setMappings(keymap.inputMappings, keymap.prefixSet);
+			this.buffer.setMappings(keymap.inputMappings, keymap.prefixSet, keymap.displayRawKeys);
 			this.chordBuffer?.reset();
 			this.setupChordBuffer(keymap);
 		}
@@ -3048,7 +3082,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.19.0";
+	const HECHIMA_VERSION = "0.20.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3241,16 +3275,6 @@ var Hechima = (function () {
 		"!": "！",
 		"/": "・"
 	};
-	const DIRECT_COMMIT = {
-		".": "。",
-		",": "、",
-		"?": "？",
-		"!": "！",
-		"[": "「",
-		"]": "」",
-		"-": "ー",
-		"/": "・"
-	};
 	const HOST_NAV_KEYS = /* @__PURE__ */ new Set([
 		"Backspace",
 		"Delete",
@@ -3395,6 +3419,11 @@ var Hechima = (function () {
 					return;
 				}
 			}
+		};
+		const eijiAppend = (ch) => {
+			kana += ch;
+			genId++;
+			render();
 		};
 		const clear = () => {
 			kana = "";
@@ -3809,6 +3838,11 @@ var Hechima = (function () {
 				}
 				if (k === "ArrowLeft" || k === "ArrowRight" || k === "ArrowUp" || k === "ArrowDown") return true;
 			}
+			const printable = tap.key.length === 1 && tap.key >= " " && tap.key <= "~";
+			if (eiji && !segs && printable && tap.key !== " ") {
+				eijiAppend(tap.key);
+				return true;
+			}
 			if (!composingNow && tap.code !== void 0 && HOST_NAV_KEYS.has(tap.code)) return false;
 			const kev = engineKeyOf ? engineKeyOf(tap) : null;
 			if (!kev) return false;
@@ -3893,19 +3927,11 @@ var Hechima = (function () {
 					return true;
 				}
 				if (eiji && !segs) {
-					kana += k;
-					genId++;
-					render();
+					eijiAppend(k);
 					return true;
 				}
 				const ch = k.toLowerCase();
-				if (!composing() && !/[a-z]/.test(ch)) {
-					if (DIRECT_COMMIT[ch]) {
-						commit(DIRECT_COMMIT[ch]);
-						return true;
-					}
-					return false;
-				}
+				if (!composing() && !/[a-z]/.test(ch) && ROMAJI[ch] === void 0) return false;
 				if (segs) commit(joined());
 				pend += ch;
 				const r = resolveRomaji(kana, pend, false);
@@ -4876,8 +4902,14 @@ const IME_STYLES = `
   border-bottom: 2px solid var(--interactive-accent);
 }
 .hechima-seg-other { border-bottom: 1px solid var(--text-faint); }
+/* 地色と文字色は **inline で流し込まれた実値**（--hechima-bg / --hechima-fg）を優先する。
+   テーマ変数を直接参照していたところ、実機のダークテーマで**地色だけ追随しない**事象が出た
+   （文字色は追随していたので、変数が読めていない説では説明がつかない）。原因を確定できて
+   いないので、**変数のスコープにも CSS の優先順位にも依存しない形**に倒した（applyThemeColors）。
+   変数が生きている環境では第 2 引数に落ちるので従来と同じ見た目になる */
 .hechima-cands {
-  background: var(--background-primary);
+  background: var(--hechima-bg, var(--background-primary));
+  color: var(--hechima-fg, var(--text-normal));
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s, 4px);
   box-shadow: var(--shadow-s, 0 2px 8px rgba(0,0,0,.15));
@@ -4896,7 +4928,7 @@ const IME_STYLES = `
   align-items: center;
   gap: .6em;
   padding: 1px 8px;
-  color: var(--text-normal);
+  color: var(--hechima-fg, var(--text-normal));
   white-space: nowrap;
 }
 /* **ホストのフォントは候補の本文だけ**に効かせる。番号・注釈・フッタまで巻き込むと、
@@ -4944,11 +4976,11 @@ const IME_STYLES = `
 }
 .hechima-cand-dot.on { background: var(--text-muted); opacity: 1; }
 .hechima-mode-badge {
-  background: var(--background-primary);
+  background: var(--hechima-bg, var(--background-primary));
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s, 4px);
   box-shadow: var(--shadow-s, 0 2px 8px rgba(0,0,0,.15));
-  color: var(--text-normal);
+  color: var(--hechima-fg, var(--text-normal));
   font-family: var(--font-interface, sans-serif);
   font-size: .8rem;
   padding: 2px 8px;
@@ -5046,6 +5078,50 @@ function createImeView() {
     }
 
     /**
+     * 候補窓・モードバッジの地色と文字色を **inline で** 直接指定する。
+     *
+     * ★**なぜ CSS クラスではなく inline なのか**（実機の診断で確定 / 2026-08-02）:
+     * CodeMirror は `create()` が返した DOM に **`cm-tooltip` クラスを直に付ける**ので、
+     * `.hechima-cands` と `.cm-tooltip` が**同一要素**になる。両者は詳細度が同じ (0,1,0) で、
+     * CodeMirror 側のスタイルは StyleModule で後から注入されるため
+     * `background-color: #f5f5f5` が勝ち、**ダークテーマで明るい地に明るい文字**になっていた
+     * （実測: 地 `rgb(245,245,245)` = `#f5f5f5`、文字 `rgb(218,218,218)`）。
+     * 変数が読めないのでも CSS が届かないのでもなく、単なる CSS の勝ち負けだった。
+     * **inline style は詳細度で必ず勝つ**ので、地色はここで直接置く。
+     *
+     * 値は `body` から実値で読む（Chrome 拡張の `effectiveBackground()` と同じ考え方。
+     * あちらはホストページの祖先を遡るが、こちらは参照先が Obsidian のテーマ変数に
+     * 決まっているので body 一点でよい）。custom property も残すのは、
+     * `cm-tooltip` が付かない**子要素**（`.hechima-cand` 等）が参照するため。
+     */
+    function applyThemeColors(dom) {
+        try {
+            const cs = getComputedStyle(document.body);
+            const fg = cs.getPropertyValue("--text-normal").trim();
+            let bg = cs.getPropertyValue("--background-primary").trim();
+            if (!bg) {
+                // テーマ変数が取れない環境（別テーマ・将来の改名）では、**文字色の輝度**から
+                // 地色を決める。明るい文字 = 暗い地。読めない配色にだけはしない、が目的
+                const m = (fg || cs.color).match(/\d+/g);
+                if (m) {
+                    const lum = (0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2]) / 255;
+                    bg = lum > 0.5 ? "#1e1e1e" : "#ffffff";
+                }
+            }
+            if (fg) {
+                dom.style.setProperty("--hechima-fg", fg);
+                dom.style.setProperty("color", fg);
+            }
+            if (bg) {
+                dom.style.setProperty("--hechima-bg", bg);
+                dom.style.setProperty("background-color", bg); // ← cm-tooltip に勝つのはこの行
+            }
+        } catch {
+            // 取れなければ CSS 側のフォールバック（テーマ変数の直接参照）に任せる
+        }
+    }
+
+    /**
      * 注目文節の左端が、未確定表示の左端から何 px 右にあるかを測る。
      *
      * 候補窓は文書位置（= 未確定表示の先頭）にアンカーされるので、これを `offset` に足すと
@@ -5120,6 +5196,7 @@ function createImeView() {
             create: (view) => {
                 const dom = document.createElement("div");
                 dom.className = "hechima-cands";
+                applyThemeColors(dom);
                 applyHostFont(dom, view, state.pos);
 
                 // 追加候補は通常候補の**上**に注釈付きで並べる（KeyLogicKit / ラボと同配置）
@@ -5199,6 +5276,7 @@ function createImeView() {
                           create: () => {
                               const dom = document.createElement("div");
                               dom.className = "hechima-mode-badge";
+                              applyThemeColors(dom); // 候補窓と同じ理由（地色がテーマに追随しない事象）
                               dom.textContent = v.text;
                               return { dom };
                           },
