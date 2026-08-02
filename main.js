@@ -5356,17 +5356,17 @@ function createImeView() {
 "use strict";
 
 /**
- * 既定の配列 = **内蔵ローマ字**（hechima のセッション層が持つ合成。`setEngine(null)`）。
+ * 既定の配列 = **JSON のローマ字**（`romaji.json` を KeymapEngine に挿す）。
  *
- * ラボと QuuBee の既定と同じ構成。JSON の romaji_* は KeymapEngine を通る別物で、
- * 内蔵だけが持つ機能が 2 つある（2026-07-30 実測）:
- *   - 句読点の即時確定（, . → 、。 を直接コミット）
- *   - BS でよみを消して素のローマ字（pending）まで戻ったときの合成復帰
- *     （「dか」→ BS →「d」+ a →「だ」。hechima v0.13.1）
- * 標準的な IME を名乗る以上、既定はこちら。JSON のローマ字は「配列を試す」用として残す。
+ * 0.12.6 まで既定は**内蔵ローマ字**（`setEngine(null)` = hechima のセッション層が持つ合成）
+ * だった。当時は内蔵にしか無い機能が 2 つあったため——句読点の即時確定と、BS でよみを消して
+ * 素のローマ字まで戻ったときの合成復帰——だが、
+ *   - 前者は 0.12.6 で「**記号を特別扱いしない**」に統一（内蔵の側を変えた）
+ *   - 後者は調べたら **engine 側にも実装済み**だった（`input-engine.ts` の `repend()`）
+ * で差が無くなった。**経路が 2 つあること自体が挙動差の温床**（実機で 4 件出た）なので、
+ * 0.13.0 で JSON へ一本化し、内蔵は選択肢から外した。
  */
-const BUILTIN_ROMAJI = "builtin_romaji";
-const DEFAULT_KEYMAP = BUILTIN_ROMAJI;
+const DEFAULT_KEYMAP = "romaji";
 
 /** vault 側の配列を置く場所。ドットフォルダではないので Files アプリからも触れる */
 const VAULT_KEYMAP_DIR = "hechima/keymaps";
@@ -5464,12 +5464,6 @@ class HechimaIME {
      */
     catalog() {
         const out = new Map();
-        out.set(BUILTIN_ROMAJI, {
-            id: BUILTIN_ROMAJI,
-            name: "ローマ字（内蔵・標準）",
-            behavior: "sequential",
-            origin: "内蔵",
-        });
         for (const [id, json] of Object.entries(BUNDLED_KEYMAPS)) {
             out.set(id, { id, name: json.name ?? id, behavior: json.behavior?.type ?? "?", origin: "同梱" });
         }
@@ -5561,14 +5555,6 @@ class HechimaIME {
     /** 配列を差し替える。合成中なら KeymapEngine 側が確定してから切り替える */
     setKeymap(id) {
         this.chordCodes = new Set(); // この配列が chord の役として宣言している物理キー
-        if (id === BUILTIN_ROMAJI) {
-            // 内蔵ローマ字 = エンジンを挿さない。かな合成はセッション層が行う
-            this.keymapId = id;
-            this.keyEngine = null;
-            this.fep?.setEngine(null);
-            this.onStatus?.();
-            return;
-        }
         const json = this.keymapJson(id);
         if (!json) throw new Error(`配列が見つからない: ${id}`);
         // **親指キー等の物理割当を設定で上書きする。**
@@ -5618,7 +5604,6 @@ class HechimaIME {
     }
 
     keymapName() {
-        if (this.keymapId === BUILTIN_ROMAJI) return "ローマ字（内蔵）";
         return this.keymapJson(this.keymapId)?.name ?? this.keymapId;
     }
 
@@ -6201,7 +6186,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
     async onload() {
         this.settings = Object.assign(
-            { keymapId: "builtin_romaji", keyboardLayout: "jis", roleKeys: {} },
+            { keymapId: "romaji", keyboardLayout: "jis", roleKeys: {} },
             await this.loadSettingsWithMigration()
         );
         // **旧 id の版が同時に動いていないか。** 両方が有効だと 2 つの IME が打鍵を
@@ -6213,10 +6198,15 @@ module.exports = class HechimaProbePlugin extends Plugin {
                 0
             );
         }
-        // 0.3.0 までの既定は romaji_jis（JSON）だった。内蔵ローマ字にしか無い機能
-        // （句読点の即時確定・BS 後の pending 復帰）があるため、旧既定のままの設定は
-        // 新既定へ移行する。明示的に JSON 版を使いたい人は選び直せる
-        if (this.settings.keymapId === "romaji_jis") this.settings.keymapId = "builtin_romaji";
+        // ローマ字の既定は 2 度動いている:
+        //   〜0.3.0    romaji_jis（JSON）
+        //   0.4.0〜0.12.6  builtin_romaji（内蔵。当時は内蔵にしか無い機能があった）
+        //   0.13.0〜   romaji（JSON。内蔵を畳んで一本化）
+        // **内蔵にしか無かった機能は 0.12.6 までに engine 側へ入った**ので、どちらの
+        // 旧既定も新既定へ寄せる（内蔵を選んでいた人は選択肢ごと無くなるため移行が必須）
+        if (this.settings.keymapId === "romaji_jis" || this.settings.keymapId === "builtin_romaji") {
+            this.settings.keymapId = "romaji";
+        }
         // keymap v2 で配列が JIS/US に統合され、名前から接尾辞が消えた（naginata_us → naginata）
         const legacyId = /^(azik|naginata|nicola|tsuki2-263|romaji_colemak|oyayubi_pyun_1key)_(jis|us)$/
             .exec(this.settings.keymapId ?? "");
@@ -6229,7 +6219,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
         const rk = this.settings.roleKeys ?? {};
         const legacy = Object.entries(rk).filter(([, v]) => typeof v === "string");
         if (legacy.length) {
-            const target = this.settings.keymapId ?? "builtin_romaji";
+            const target = this.settings.keymapId ?? "romaji";
             const moved = {};
             for (const [oldName, code] of legacy) {
                 moved[roleRename[oldName] ?? oldName] = code;
