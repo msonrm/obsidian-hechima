@@ -4273,11 +4273,718 @@ var Hechima = (function () {
     return module.exports;
 }).call(globalThis);
 
+// ==== vendored: FlickEngine ====
+var FlickEngine = (function () {
+    var module = { exports: {} };
+    var exports = module.exports;
+    var define = undefined;
+(function(global, factory) {
+	typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, factory(global.FlickEngine = {}));
+})(this, function(exports) {
+	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+	//#region src/engine/gamepad-kana-table.ts
+	/** 濁点変換マップ */
+	const DAKUTEN_MAP = /* @__PURE__ */ new Map([
+		["か", "が"],
+		["き", "ぎ"],
+		["く", "ぐ"],
+		["け", "げ"],
+		["こ", "ご"],
+		["さ", "ざ"],
+		["し", "じ"],
+		["す", "ず"],
+		["せ", "ぜ"],
+		["そ", "ぞ"],
+		["た", "だ"],
+		["ち", "ぢ"],
+		["つ", "づ"],
+		["て", "で"],
+		["と", "ど"],
+		["は", "ば"],
+		["ひ", "び"],
+		["ふ", "ぶ"],
+		["へ", "べ"],
+		["ほ", "ぼ"],
+		["う", "ゔ"]
+	]);
+	/** 半濁点変換マップ */
+	const HANDAKUTEN_MAP = /* @__PURE__ */ new Map([
+		["は", "ぱ"],
+		["ひ", "ぴ"],
+		["ふ", "ぷ"],
+		["へ", "ぺ"],
+		["ほ", "ぽ"]
+	]);
+	new Map([...DAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
+	new Map([...HANDAKUTEN_MAP.entries()].map(([k, v]) => [v, k]));
+	//#endregion
+	//#region src/engine/postmodify.ts
+	/**
+	* サイクルの既定表。iOS 標準 12 キーの「゛゜小」と同系列（押すたびに次へ、末尾 → 先頭）。
+	* flickmap は `postModifyCycles` で完全置換できる。
+	*/
+	const DEFAULT_POST_MODIFY_CYCLES = [
+		"かが",
+		"きぎ",
+		"くぐ",
+		"けげ",
+		"こご",
+		"さざ",
+		"しじ",
+		"すず",
+		"せぜ",
+		"そぞ",
+		"ただ",
+		"ちぢ",
+		"つっづ",
+		"てで",
+		"とど",
+		"はばぱ",
+		"ひびぴ",
+		"ふぶぷ",
+		"へべぺ",
+		"ほぼぽ",
+		"あぁ",
+		"いぃ",
+		"うぅゔ",
+		"えぇ",
+		"おぉ",
+		"やゃ",
+		"ゆゅ",
+		"よょ",
+		"わゎ"
+	];
+	/** tail（末尾 1 字）の次のトグル字。どのサイクルにも無ければ null */
+	function nextPostModify(tail, cycles) {
+		for (const cycle of cycles) {
+			const chars = Array.from(cycle);
+			const i = chars.indexOf(tail);
+			if (i >= 0) return chars[(i + 1) % chars.length];
+		}
+		return null;
+	}
+	//#endregion
+	//#region src/flick/flickmap-decoder.ts
+	const ACTION_NAMES = /* @__PURE__ */ new Set([
+		"deleteBack",
+		"convert",
+		"confirm",
+		"escape",
+		"undo",
+		"moveLeft",
+		"moveRight",
+		"moveUp",
+		"moveDown",
+		"resizeLeft",
+		"resizeRight",
+		"setLayer",
+		"postModify"
+	]);
+	const DIRS = [
+		"up",
+		"down",
+		"left",
+		"right"
+	];
+	function fail(msg) {
+		throw new Error(`flickmap: ${msg}`);
+	}
+	function isObj(v) {
+		return typeof v === "object" && v !== null && !Array.isArray(v);
+	}
+	/** _comment を除いた実キー一覧。allowed 外があれば例外 */
+	function ownKeys(obj, allowed, where) {
+		const keys = Object.keys(obj).filter((k) => !k.startsWith("_comment"));
+		for (const k of keys) if (!allowed.includes(k)) fail(`${where} に未知のキー "${k}"`);
+		return keys;
+	}
+	function optStr(obj, key, where) {
+		const v = obj[key];
+		if (v === void 0) return void 0;
+		if (typeof v !== "string") fail(`${where}.${key} は文字列であるべき`);
+		return v;
+	}
+	function optInt(obj, key, min, where) {
+		const v = obj[key];
+		if (v === void 0) return void 0;
+		if (typeof v !== "number" || !Number.isInteger(v) || v < min) fail(`${where}.${key} は ${min} 以上の整数であるべき`);
+		return v;
+	}
+	function decodeValue(v, where) {
+		if (typeof v === "string") {
+			if (v.length === 0) fail(`${where} が空文字列`);
+			return v;
+		}
+		if (!isObj(v)) fail(`${where} は文字列かアクションであるべき`);
+		ownKeys(v, ["action", "layer"], where);
+		const action = v.action;
+		if (typeof action !== "string" || !ACTION_NAMES.has(action)) fail(`${where} の action "${String(action)}" は未知`);
+		const out = { action };
+		if (action === "setLayer") {
+			const layer = v.layer;
+			if (typeof layer !== "string" || !layer) fail(`${where} の setLayer に layer が無い`);
+			out.layer = layer;
+		} else if (v.layer !== void 0) fail(`${where} の ${action} に layer は指定できない`);
+		return out;
+	}
+	function decodeKey(raw, rows, cols, where) {
+		if (!isObj(raw)) fail(`${where} はオブジェクトであるべき`);
+		ownKeys(raw, [
+			"row",
+			"col",
+			"rowSpan",
+			"colSpan",
+			"label",
+			"composingLabel",
+			"tap",
+			"flick",
+			"repeat"
+		], where);
+		const row = optInt(raw, "row", 0, where);
+		const col = optInt(raw, "col", 0, where);
+		if (row === void 0 || col === void 0) fail(`${where} に row/col が無い`);
+		const rowSpan = optInt(raw, "rowSpan", 1, where) ?? 1;
+		const colSpan = optInt(raw, "colSpan", 1, where) ?? 1;
+		if (row + rowSpan > rows || col + colSpan > cols) fail(`${where} (row=${row}, col=${col}, span=${rowSpan}x${colSpan}) がグリッド ${rows}x${cols} をはみ出す`);
+		const tap = raw.tap === void 0 ? null : decodeValue(raw.tap, `${where}.tap`);
+		const flick = {};
+		if (raw.flick !== void 0) {
+			if (!isObj(raw.flick)) fail(`${where}.flick はオブジェクトであるべき`);
+			const dirKeys = ownKeys(raw.flick, DIRS, `${where}.flick`);
+			if (dirKeys.length === 0) fail(`${where}.flick が空`);
+			for (const d of dirKeys) flick[d] = decodeValue(raw.flick[d], `${where}.flick.${d}`);
+		}
+		if (tap === null && Object.keys(flick).length === 0) fail(`${where} に tap も flick も無い`);
+		const label = optStr(raw, "label", where) ?? (typeof tap === "string" ? tap : null);
+		if (label === null) fail(`${where} はアクションキーなので label が必須`);
+		const composingLabel = optStr(raw, "composingLabel", where);
+		const repeat = raw.repeat === void 0 ? false : raw.repeat;
+		if (typeof repeat !== "boolean") fail(`${where}.repeat は boolean であるべき`);
+		return {
+			row,
+			col,
+			rowSpan,
+			colSpan,
+			label,
+			composingLabel,
+			tap,
+			flick,
+			repeat
+		};
+	}
+	function decodeLayer(name, raw, mapOutput, where) {
+		if (!isObj(raw)) fail(`${where} はオブジェクトであるべき`);
+		ownKeys(raw, [
+			"grid",
+			"keys",
+			"output"
+		], where);
+		const grid = raw.grid;
+		if (!isObj(grid)) fail(`${where}.grid が無い`);
+		ownKeys(grid, ["rows", "cols"], `${where}.grid`);
+		const rows = optInt(grid, "rows", 1, `${where}.grid`);
+		const cols = optInt(grid, "cols", 1, `${where}.grid`);
+		if (rows === void 0 || cols === void 0 || rows > 8 || cols > 8) fail(`${where}.grid は rows/cols 1〜8 であるべき`);
+		const output = optStr(raw, "output", where) ?? mapOutput;
+		if (output !== "kana" && output !== "romaji" && output !== "direct") fail(`${where}.output "${output}" は未知（kana / romaji / direct）`);
+		if (!Array.isArray(raw.keys) || raw.keys.length === 0) fail(`${where}.keys が空`);
+		const keys = raw.keys.map((k, i) => decodeKey(k, rows, cols, `${where}.keys[${i}]`));
+		const occupied = /* @__PURE__ */ new Set();
+		for (const k of keys) for (let r = k.row; r < k.row + k.rowSpan; r++) for (let c = k.col; c < k.col + k.colSpan; c++) {
+			const cell = `${r},${c}`;
+			if (occupied.has(cell)) fail(`${where} でセル (${cell}) が重複している`);
+			occupied.add(cell);
+		}
+		for (const k of keys) {
+			const values = [k.tap, ...Object.values(k.flick)].filter((v) => v != null);
+			for (const v of values) if (typeof v === "string") {
+				if (output === "romaji") {
+					for (const ch of v) if (ch < " " || ch > "~") fail(`${where} romaji レイヤの値 "${v}" に非 ASCII 文字`);
+				}
+			} else if (v.action === "postModify" && output !== "kana") fail(`${where} postModify は kana 出力レイヤ専用`);
+		}
+		return {
+			name,
+			output,
+			rows,
+			cols,
+			keys
+		};
+	}
+	/** flickmap JSON をデコード・検証する。不正なら Error を投げる */
+	function decodeFlickmap(json) {
+		if (!isObj(json)) fail("トップレベルはオブジェクトであるべき");
+		ownKeys(json, [
+			"formatVersion",
+			"name",
+			"description",
+			"author",
+			"contributor",
+			"basedOn",
+			"license",
+			"output",
+			"flickConfig",
+			"postModifyCycles",
+			"initialLayer",
+			"layers"
+		], "トップレベル");
+		if (json.formatVersion !== "flick-1") fail(`formatVersion "${String(json.formatVersion)}" は未対応（"flick-1" のみ）`);
+		const name = optStr(json, "name", "トップレベル");
+		if (!name) fail("name が無い");
+		const mapOutput = optStr(json, "output", "トップレベル") ?? "kana";
+		if (mapOutput !== "kana" && mapOutput !== "romaji") fail(`output "${mapOutput}" は未知（kana / romaji）`);
+		let threshold = .35;
+		let petalDelayMs = 0;
+		let repeatDelayMs = 500;
+		let repeatIntervalMs = 80;
+		if (json.flickConfig !== void 0) {
+			const fc = json.flickConfig;
+			if (!isObj(fc)) fail("flickConfig はオブジェクトであるべき");
+			ownKeys(fc, [
+				"inputStyle",
+				"threshold",
+				"petalDelayMs",
+				"repeat"
+			], "flickConfig");
+			const style = optStr(fc, "inputStyle", "flickConfig");
+			if (style !== void 0 && style !== "flick") fail(`inputStyle "${style}" は未対応（flick-1 実装は "flick" のみ）`);
+			if (fc.threshold !== void 0) {
+				if (typeof fc.threshold !== "number" || fc.threshold < .1 || fc.threshold > 1) fail("flickConfig.threshold は 0.1〜1.0 の数値であるべき");
+				threshold = fc.threshold;
+			}
+			petalDelayMs = optInt(fc, "petalDelayMs", 0, "flickConfig") ?? petalDelayMs;
+			if (fc.repeat !== void 0) {
+				if (!isObj(fc.repeat)) fail("flickConfig.repeat はオブジェクトであるべき");
+				ownKeys(fc.repeat, ["delayMs", "intervalMs"], "flickConfig.repeat");
+				repeatDelayMs = optInt(fc.repeat, "delayMs", 0, "flickConfig.repeat") ?? repeatDelayMs;
+				repeatIntervalMs = optInt(fc.repeat, "intervalMs", 16, "flickConfig.repeat") ?? repeatIntervalMs;
+			}
+		}
+		let postModifyCycles = [...DEFAULT_POST_MODIFY_CYCLES];
+		if (json.postModifyCycles !== void 0) {
+			const pc = json.postModifyCycles;
+			if (!Array.isArray(pc) || pc.some((c) => typeof c !== "string" || Array.from(c).length < 2)) fail("postModifyCycles は 2 字以上の文字列の配列であるべき");
+			postModifyCycles = pc;
+		}
+		if (!isObj(json.layers)) fail("layers が無い");
+		const layerNames = Object.keys(json.layers).filter((k) => !k.startsWith("_comment"));
+		if (layerNames.length === 0) fail("layers が空");
+		const layers = {};
+		for (const ln of layerNames) layers[ln] = decodeLayer(ln, json.layers[ln], mapOutput, `layers.${ln}`);
+		for (const ln of layerNames) for (const k of layers[ln].keys) {
+			const values = [k.tap, ...Object.values(k.flick)].filter((v) => v != null);
+			for (const v of values) if (typeof v !== "string" && v.action === "setLayer" && !(v.layer in layers)) fail(`layers.${ln} の setLayer 先 "${v.layer}" が存在しない`);
+		}
+		const initialLayer = optStr(json, "initialLayer", "トップレベル") ?? ("kana" in layers ? "kana" : layerNames[0]);
+		if (!(initialLayer in layers)) fail(`initialLayer "${initialLayer}" が存在しない`);
+		return {
+			name,
+			description: optStr(json, "description", "トップレベル"),
+			author: optStr(json, "author", "トップレベル"),
+			license: optStr(json, "license", "トップレベル"),
+			basedOn: optStr(json, "basedOn", "トップレベル"),
+			initialLayer,
+			threshold,
+			petalDelayMs,
+			repeatDelayMs,
+			repeatIntervalMs,
+			postModifyCycles,
+			layers
+		};
+	}
+	//#endregion
+	//#region src/flick/resolver.ts
+	/** アクション → 合成 KeyTap（keymap v1 specialActions と同じ意味論） */
+	const ACTION_TAPS = {
+		deleteBack: {
+			key: "Backspace",
+			code: "Backspace"
+		},
+		convert: {
+			key: " ",
+			code: "Space"
+		},
+		confirm: {
+			key: "Enter",
+			code: "Enter"
+		},
+		escape: {
+			key: "Escape",
+			code: "Escape"
+		},
+		undo: {
+			key: "Backspace",
+			code: "Backspace",
+			ctrlKey: true
+		},
+		moveLeft: {
+			key: "ArrowLeft",
+			code: "ArrowLeft"
+		},
+		moveRight: {
+			key: "ArrowRight",
+			code: "ArrowRight"
+		},
+		moveUp: {
+			key: "ArrowUp",
+			code: "ArrowUp"
+		},
+		moveDown: {
+			key: "ArrowDown",
+			code: "ArrowDown"
+		},
+		resizeLeft: {
+			key: "ArrowLeft",
+			code: "ArrowLeft",
+			shiftKey: true
+		},
+		resizeRight: {
+			key: "ArrowRight",
+			code: "ArrowRight",
+			shiftKey: true
+		}
+	};
+	function createResolver(map, host = {}) {
+		let current = map.initialLayer;
+		function keyAt(row, col) {
+			for (const k of map.layers[current].keys) if (row >= k.row && row < k.row + k.rowSpan && col >= k.col && col < k.col + k.colSpan) return k;
+			return null;
+		}
+		function resolveValue(value) {
+			if (typeof value === "string") {
+				const output = map.layers[current].output;
+				if (output === "kana") return [{
+					type: "kana",
+					text: value,
+					replace: 0
+				}];
+				if (output === "romaji") return Array.from(value).map((ch) => ({
+					type: "key",
+					tap: { key: ch }
+				}));
+				return [{
+					type: "text",
+					text: value
+				}];
+			}
+			if (value.action === "setLayer") {
+				const target = value.layer;
+				if (!(target in map.layers)) return [];
+				current = target;
+				return [{
+					type: "layer",
+					layer: target
+				}];
+			}
+			if (value.action === "postModify") {
+				const composing = host.getComposingTail?.() ?? "";
+				const chars = Array.from(composing);
+				if (chars.length === 0) return [];
+				const next = nextPostModify(chars[chars.length - 1], map.postModifyCycles);
+				if (next === null) return [];
+				return [{
+					type: "kana",
+					text: next,
+					replace: 1
+				}];
+			}
+			const tap = ACTION_TAPS[value.action];
+			return tap ? [{
+				type: "key",
+				tap: { ...tap }
+			}] : [];
+		}
+		return {
+			get layer() {
+				return current;
+			},
+			setLayer(name) {
+				if (!(name in map.layers)) return false;
+				current = name;
+				return true;
+			},
+			keyAt,
+			resolve(gesture) {
+				const key = keyAt(gesture.row, gesture.col);
+				if (!key) return [];
+				const value = gesture.kind === "tap" ? key.tap : gesture.dir !== void 0 ? key.flick[gesture.dir] ?? null : null;
+				if (value == null) return [];
+				return resolveValue(value);
+			}
+		};
+	}
+	//#endregion
+	//#region src/flick/geometry.ts
+	/**
+	* pointerdown 起点からの変位 (dx, dy) を判定する。
+	* - 距離 < threshold × cellWidth → tap
+	* - 以上 → flick。方向は角度 45° 区切り（画面座標系: y は下向き正）
+	*/
+	function classifyGesture(dx, dy, cellWidth, threshold) {
+		if (Math.hypot(dx, dy) < cellWidth * threshold) return { kind: "tap" };
+		const deg = Math.atan2(dy, dx) * 180 / Math.PI;
+		if (deg >= -135 && deg < -45) return {
+			kind: "flick",
+			dir: "up"
+		};
+		if (deg >= -45 && deg < 45) return {
+			kind: "flick",
+			dir: "right"
+		};
+		if (deg >= 45 && deg < 135) return {
+			kind: "flick",
+			dir: "down"
+		};
+		return {
+			kind: "flick",
+			dir: "left"
+		};
+	}
+	//#endregion
+	//#region src/flick/keyboard.ts
+	const STYLE_ID = "flick-engine-style";
+	const CSS = `
+.fe-root { position: relative; display: grid; gap: 4px; padding: 6px;
+  box-sizing: border-box; width: 100%; height: 100%;
+  background: var(--fe-bg, #d1d5db); border-radius: 8px;
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+.fe-key { display: flex; align-items: center; justify-content: center;
+  background: var(--fe-key-bg, #ffffff); color: var(--fe-key-fg, #111827);
+  border-radius: 6px; box-shadow: 0 1px 0 rgba(0,0,0,.25);
+  font-size: clamp(14px, 3.2vmin, 22px); line-height: 1; cursor: pointer;
+  touch-action: none; }
+.fe-key.fe-fn { background: var(--fe-fn-bg, #9ca3af); color: var(--fe-fn-fg, #111827);
+  font-size: clamp(11px, 2.4vmin, 16px); }
+.fe-key.fe-active { background: var(--fe-active-bg, #93c5fd); }
+.fe-petal { position: absolute; z-index: 10; pointer-events: none;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
+.fe-petal span { display: flex; align-items: center; justify-content: center;
+  background: var(--fe-petal-bg, #374151); color: var(--fe-petal-fg, #ffffff);
+  border-radius: 6px; font-size: clamp(13px, 3vmin, 20px); opacity: .95; }
+.fe-petal span:empty { visibility: hidden; }
+.fe-petal .fe-hot { background: var(--fe-petal-hot-bg, #2563eb); }
+`;
+	function ensureStyle(doc) {
+		if (doc.getElementById(STYLE_ID)) return;
+		const style = doc.createElement("style");
+		style.id = STYLE_ID;
+		style.textContent = CSS;
+		doc.head.appendChild(style);
+	}
+	/** 値の表示文字列（アクションは petal に出さない = 空） */
+	function petalLabel(key, dir) {
+		const v = key.flick[dir];
+		return typeof v === "string" ? v : "";
+	}
+	function mount(container, map, opts) {
+		const doc = container.ownerDocument;
+		ensureStyle(doc);
+		const resolver = createResolver(map, opts);
+		const root = doc.createElement("div");
+		root.className = "fe-root";
+		container.appendChild(root);
+		let composing = false;
+		const keyEls = /* @__PURE__ */ new Map();
+		const labelFor = (key) => composing && key.composingLabel !== void 0 ? key.composingLabel : key.label;
+		let press = null;
+		function emitOps(ops) {
+			for (const op of ops) {
+				if (op.type === "layer") render();
+				opts.onOp(op);
+			}
+		}
+		function cellWidth() {
+			const layer = map.layers[resolver.layer];
+			return root.clientWidth / layer.cols;
+		}
+		function showPetal() {
+			if (!press || press.petal) return;
+			const { key, el } = press;
+			const petal = doc.createElement("div");
+			petal.className = "fe-petal";
+			const center = typeof key.tap === "string" ? key.tap : key.label;
+			const cells = [
+				"",
+				petalLabel(key, "up"),
+				"",
+				petalLabel(key, "left"),
+				center,
+				petalLabel(key, "right"),
+				"",
+				petalLabel(key, "down"),
+				""
+			];
+			for (const text of cells) {
+				const span = doc.createElement("span");
+				span.textContent = text;
+				petal.appendChild(span);
+			}
+			const rootRect = root.getBoundingClientRect();
+			const r = el.getBoundingClientRect();
+			petal.style.left = `${r.left - rootRect.left - r.width}px`;
+			petal.style.top = `${r.top - rootRect.top - r.height}px`;
+			petal.style.width = `${r.width * 3}px`;
+			petal.style.height = `${r.height * 3}px`;
+			root.appendChild(petal);
+			press.petal = petal;
+		}
+		function highlightPetal(dir) {
+			if (!press?.petal) return;
+			const order = [
+				null,
+				"up",
+				null,
+				"left",
+				null,
+				"right",
+				null,
+				"down",
+				null
+			];
+			press.petal.querySelectorAll("span").forEach((span, i) => {
+				span.classList.toggle("fe-hot", dir !== null && order[i] === dir);
+			});
+		}
+		function clearPress() {
+			if (!press) return;
+			if (press.petalTimer !== null) clearTimeout(press.petalTimer);
+			if (press.repeatTimer !== null) clearTimeout(press.repeatTimer);
+			press.petal?.remove();
+			press.el.classList.remove("fe-active");
+			press = null;
+		}
+		function onDown(e, key, el) {
+			if (press) return;
+			e.preventDefault();
+			el.setPointerCapture(e.pointerId);
+			el.classList.add("fe-active");
+			press = {
+				pointerId: e.pointerId,
+				key,
+				el,
+				startX: e.clientX,
+				startY: e.clientY,
+				cellW: cellWidth(),
+				petal: null,
+				petalTimer: null,
+				repeatTimer: null,
+				repeatFired: false
+			};
+			if (Object.keys(key.flick).length > 0) if (map.petalDelayMs <= 0) showPetal();
+			else press.petalTimer = setTimeout(showPetal, map.petalDelayMs);
+			if (key.repeat && key.tap !== null) {
+				const fire = () => {
+					if (!press) return;
+					press.repeatFired = true;
+					emitOps(resolver.resolve({
+						row: key.row,
+						col: key.col,
+						kind: "tap"
+					}));
+					press.repeatTimer = setTimeout(fire, map.repeatIntervalMs);
+				};
+				press.repeatTimer = setTimeout(fire, map.repeatDelayMs);
+			}
+		}
+		function onMove(e) {
+			if (!press || e.pointerId !== press.pointerId) return;
+			const g = classifyGesture(e.clientX - press.startX, e.clientY - press.startY, press.cellW, map.threshold);
+			if (g.kind === "flick" && !press.petal && Object.keys(press.key.flick).length > 0) showPetal();
+			highlightPetal(g.kind === "flick" ? g.dir : null);
+			if (g.kind === "flick" && press.repeatTimer !== null && !press.repeatFired) {
+				clearTimeout(press.repeatTimer);
+				press.repeatTimer = null;
+			}
+		}
+		function onUp(e) {
+			if (!press || e.pointerId !== press.pointerId) return;
+			const { key, startX, startY, cellW, repeatFired } = press;
+			const g = classifyGesture(e.clientX - startX, e.clientY - startY, cellW, map.threshold);
+			clearPress();
+			if (repeatFired) return;
+			emitOps(resolver.resolve({
+				row: key.row,
+				col: key.col,
+				kind: g.kind,
+				dir: g.dir
+			}));
+		}
+		function onCancel(e) {
+			if (!press || e.pointerId !== press.pointerId) return;
+			clearPress();
+		}
+		function render() {
+			root.querySelectorAll(".fe-key, .fe-petal").forEach((el) => el.remove());
+			if (press) clearPress();
+			keyEls.clear();
+			const layer = map.layers[resolver.layer];
+			root.style.gridTemplate = `repeat(${layer.rows}, 1fr) / repeat(${layer.cols}, 1fr)`;
+			for (const key of layer.keys) {
+				const el = doc.createElement("div");
+				el.className = typeof key.tap === "string" ? "fe-key" : "fe-key fe-fn";
+				el.textContent = labelFor(key);
+				keyEls.set(el, key);
+				el.style.gridRow = `${key.row + 1} / span ${key.rowSpan}`;
+				el.style.gridColumn = `${key.col + 1} / span ${key.colSpan}`;
+				el.addEventListener("pointerdown", (e) => onDown(e, key, el));
+				root.appendChild(el);
+			}
+		}
+		root.addEventListener("pointermove", onMove);
+		root.addEventListener("pointerup", onUp);
+		root.addEventListener("pointercancel", onCancel);
+		root.addEventListener("touchend", (e) => e.preventDefault(), { passive: false });
+		render();
+		return {
+			get element() {
+				return root;
+			},
+			get layer() {
+				return resolver.layer;
+			},
+			setLayer(name) {
+				const ok = resolver.setLayer(name);
+				if (ok) render();
+				return ok;
+			},
+			setComposing(on) {
+				on = !!on;
+				if (composing === on) return;
+				composing = on;
+				for (const [el, key] of keyEls) el.textContent = labelFor(key);
+			},
+			destroy() {
+				clearPress();
+				root.remove();
+			}
+		};
+	}
+	//#endregion
+	//#region src/flick/version.ts
+	const FLICK_ENGINE_VERSION = "1.2.0";
+	//#endregion
+	exports.DEFAULT_POST_MODIFY_CYCLES = DEFAULT_POST_MODIFY_CYCLES;
+	exports.classifyGesture = classifyGesture;
+	exports.createResolver = createResolver;
+	exports.decodeFlickmap = decodeFlickmap;
+	exports.mount = mount;
+	exports.nextPostModify = nextPostModify;
+	exports.version = FLICK_ENGINE_VERSION;
+});
+
+    return module.exports;
+}).call(globalThis);
+
 // ==== plugin ====
 
 // ==== bundled keymaps (7) ====
 // 自動生成: web/public/keymaps/*.json を埋め込んだもの。編集しないこと。
-const BUNDLED_KEYMAPS = {"azik":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"AZIK","description":"AZIK 拡張ローマ字入力","author":"木村清","targetScript":"hiragana","inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"},"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"naginata":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"薙刀式","description":"薙刀式v18同時打鍵入力","author":"大岡俊彦","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","holder1+E":"り","holder1+R":"め","holder1+W":"ね","holder1+I":"よ","holder1+O":"え","holder1+P":"ゆ","holder1+U":"さ","holder1+A":"せ","holder1+D":"に","holder1+F":"ま","holder1+G":"ち","holder1+H":"や","holder1+J":"の","holder1+K":"も","holder1+L":"つ","holder1+S":"み","holder1+semicolon":"ふ","holder1+B":"ぬ","holder1+C":"を","holder1+N":"お","holder1+X":"ひ","holder1+Z":"ほ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","holder1+M":"insertAndConfirm:。","holder1+T":"editSegmentLeft","holder1+V":"insertAndConfirm:、","holder1+Y":"editSegmentRight"},"judgment":"mutual","englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}},"requires":["judgment:mutual","roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"nicola":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"NICOLA","description":"NICOLA 親指シフト入力","author":"日本語入力コンソーシアム","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["lang2","international5"]},"holder2":{"label":"右親指","keys":["lang1","international4"]}},"layouts":{"us":{"holder1":["space"],"holder2":["rightAlt"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"ぱ","holder1+U":"ぢ","holder1+I":"ぐ","holder1+O":"づ","holder1+P":"ぴ","_comment_semicolon":"NICOLA 規格書 図1: ; の交差シフト面は割り当て無し（セルは 2 文字）","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"ば","holder1+J":"ど","holder1+K":"ぎ","holder1+L":"ぽ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぷ","holder1+M":"ぞ","holder1+comma":"ぺ","holder1+dot":"ぼ","holder1+slash":"ぉ","holder2+Q":"ぁ","holder2+W":"が","holder2+E":"だ","holder2+R":"ご","holder2+T":"ざ","holder2+Y":"よ","holder2+U":"に","holder2+I":"る","holder2+O":"ま","holder2+P":"ぇ","holder2+semicolon":"っ","holder2+A":"ゔ","holder2+S":"じ","holder2+D":"で","holder2+F":"げ","holder2+G":"ぜ","holder2+H":"み","holder2+J":"お","holder2+K":"の","holder2+L":"ょ","holder2+Z":"ぅ","holder2+X":"び","holder2+C":"ず","holder2+V":"ぶ","holder2+B":"べ","holder2+N":"ぬ","holder2+M":"ゆ","holder2+comma":"む","holder2+dot":"わ","holder2+slash":"ぉ"},"specialActions":{},"judgment":"window","simultaneousWindow":0.1}},"requires":["roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"}},"oyayubi_pyun_1key":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"親指ぴゅん 1キー版","description":"親指シフトキーボードエミュレータ「親指ぴゅん」（遠藤諭 / Hortense S. Endoh）の DOS/V 版 OKPV.ASM v0.80（1992）の -p（ＡＴキーボード）モードに倣った配列。親指ぴゅん自体は 1989 年の OKPJ.asm v0.69 まで遡る。AT/101 には無変換キーが無いため、親指シフトはスペース 1 本の単独シフトになり、交差シフトの濁音は無効化される。濁音・半濁音は L 字エンター左のキー（スキャンコード 0x1b）で後付けする。","author":"遠藤諭（Hortense S. Endoh）","basedOn":"NICOLA","addedAt":"2026-08-01","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"_comment_single":"単打（kanatbl）","Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","semicolon":"ん","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","_comment_shift":"スペース同時押し（kanasfttbl）。-p では交差シフトの濁音が無効化され、親指シフトは常にシフト面","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"よ","holder1+U":"に","holder1+I":"る","holder1+O":"ま","holder1+P":"ぇ","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"み","holder1+J":"お","holder1+K":"の","holder1+L":"ょ","holder1+semicolon":"っ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぬ","holder1+M":"ゆ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"ぉ"},"specialActions":{},"judgment":"mutual"}},"requires":["judgment:mutual","roles","postModify","actionGuard"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","bracketRight":{"action":"postModify:dakuten","when":["composing"]},"shift+bracketRight":{"action":"postModify:handakuten","when":["composing"]},"lang1":"switchToJapanese","lang2":"switchToEnglish"}},"romaji":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（QWERTY）","description":"標準ローマ字入力","targetScript":"hiragana","inputBase":"romaji","behavior":{"type":"sequential","characterMap":{}},"modeKeys":{"ctrl+space":"toggleInputMode","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"romaji_colemak":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（Colemak）","description":"Colemak 配列でのローマ字入力。iPadOS が Colemak をサポートしないため、アプリ側で QWERTY→Colemak キーリマップを行う。","author":"Shai Coleman","license":"Unlicense","targetScript":"hiragana","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"},"inputBase":"romaji","keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"tsuki2-263":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"月配列2-263","description":"月配列2-263 前置シフト方式","targetScript":"hiragana","base":"positional","inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"},"prefixShiftKeys":["d","k"],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","'":"＇"}},"requires":["positionalBase"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}}};
+const BUNDLED_KEYMAPS = {"azik":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"AZIK","description":"AZIK 拡張ローマ字入力","author":"木村清","targetScript":"hiragana","inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"},"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"naginata":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"薙刀式","description":"薙刀式v18同時打鍵入力","author":"大岡俊彦","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","holder1+E":"り","holder1+R":"め","holder1+W":"ね","holder1+I":"よ","holder1+O":"え","holder1+P":"ゆ","holder1+U":"さ","holder1+A":"せ","holder1+D":"に","holder1+F":"ま","holder1+G":"ち","holder1+H":"や","holder1+J":"の","holder1+K":"も","holder1+L":"つ","holder1+S":"み","holder1+semicolon":"ふ","holder1+B":"ぬ","holder1+C":"を","holder1+N":"お","holder1+X":"ひ","holder1+Z":"ほ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","holder1+M":"insertAndConfirm:。","holder1+T":"editSegmentLeft","holder1+V":"insertAndConfirm:、","holder1+Y":"editSegmentRight"},"judgment":"mutual","englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}},"requires":["judgment:mutual","roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"nicola":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"NICOLA","description":"NICOLA 親指シフト入力","author":"日本語入力コンソーシアム","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["lang2","international5"]},"holder2":{"label":"右親指","keys":["lang1","international4"]}},"layouts":{"us":{"holder1":["space"],"holder2":["rightAlt"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"ぱ","holder1+U":"ぢ","holder1+I":"ぐ","holder1+O":"づ","holder1+P":"ぴ","_comment_semicolon":"NICOLA 規格書 図1: ; の交差シフト面は割り当て無し（セルは 2 文字）","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"ば","holder1+J":"ど","holder1+K":"ぎ","holder1+L":"ぽ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぷ","holder1+M":"ぞ","holder1+comma":"ぺ","holder1+dot":"ぼ","holder1+slash":"ぉ","holder2+Q":"ぁ","holder2+W":"が","holder2+E":"だ","holder2+R":"ご","holder2+T":"ざ","holder2+Y":"よ","holder2+U":"に","holder2+I":"る","holder2+O":"ま","holder2+P":"ぇ","holder2+semicolon":"っ","holder2+A":"ゔ","holder2+S":"じ","holder2+D":"で","holder2+F":"げ","holder2+G":"ぜ","holder2+H":"み","holder2+J":"お","holder2+K":"の","holder2+L":"ょ","holder2+Z":"ぅ","holder2+X":"び","holder2+C":"ず","holder2+V":"ぶ","holder2+B":"べ","holder2+N":"ぬ","holder2+M":"ゆ","holder2+comma":"む","holder2+dot":"わ","holder2+slash":"ぉ"},"specialActions":{},"judgment":"window","simultaneousWindow":0.1}},"requires":["roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"}},"oyayubi_pyun_1key":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"親指ぴゅん 1キー版","description":"親指シフトキーボードエミュレータ「親指ぴゅん」（遠藤諭 / Hortense S. Endoh）の DOS/V 版 OKPV.ASM v0.80（1992）の -p（ＡＴキーボード）モードに倣った配列。親指ぴゅん自体は 1989 年の OKPJ.asm v0.69 まで遡る。AT/101 には無変換キーが無いため、親指シフトはスペース 1 本の単独シフトになり、交差シフトの濁音は無効化される。濁音・半濁音は L 字エンター左のキー（スキャンコード 0x1b）で後付けする。","author":"遠藤諭（Hortense S. Endoh）","basedOn":"NICOLA","addedAt":"2026-08-01","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"_comment_single":"単打（kanatbl）","Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","semicolon":"ん","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","_comment_shift":"スペース同時押し（kanasfttbl）。-p では交差シフトの濁音が無効化され、親指シフトは常にシフト面","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"よ","holder1+U":"に","holder1+I":"る","holder1+O":"ま","holder1+P":"ぇ","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"み","holder1+J":"お","holder1+K":"の","holder1+L":"ょ","holder1+semicolon":"っ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぬ","holder1+M":"ゆ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"ぉ"},"specialActions":{},"judgment":"mutual"}},"requires":["judgment:mutual","roles","postModify","actionGuard"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","bracketRight":{"action":"postModify:dakuten","when":["composing"]},"shift+bracketRight":{"action":"postModify:handakuten","when":["composing"]},"lang1":"switchToJapanese","lang2":"switchToEnglish"}},"romaji":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（QWERTY）","description":"標準ローマ字入力","targetScript":"hiragana","inputBase":"romaji","behavior":{"type":"sequential","characterMap":{}},"modeKeys":{"ctrl+space":"toggleInputMode","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"romaji_colemak":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（Colemak）","description":"Colemak 配列でのローマ字入力。OS 側のキーボードレイアウトは QWERTY のまま、アプリ内で QWERTY→Colemak のキーリマップを行う。OS 側を Colemak に設定している場合は QWERTY に戻してください（二重に変換されるため）。","author":"Shai Coleman","license":"Unlicense","targetScript":"hiragana","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"},"inputBase":"romaji","keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"tsuki2-263":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"月配列2-263","description":"月配列2-263 前置シフト方式","targetScript":"hiragana","base":"positional","inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"},"prefixShiftKeys":["d","k"],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","'":"＇"}},"requires":["positionalBase"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}}};
+
+
+// ==== bundled flickmaps (1) ====
+// 自動生成: web/public/flickmaps/*.json を埋め込んだもの。編集しないこと。
+const BUNDLED_FLICKMAPS = {"flick_standard":{"formatVersion":"flick-1","name":"12キー標準フリック","description":"iOS / Android 標準相当の12キーフリック入力（かな・英字・数字の3レイヤ）","output":"kana","flickConfig":{"inputStyle":"flick","threshold":0.35,"petalDelayMs":350,"repeat":{"delayMs":500,"intervalMs":80}},"initialLayer":"kana","_comment_layout":"左端列 = 戻す / ←(↑↓フリック) / 英数トグル / ひらがな。右端列 = ⌫ / →(↑↓フリック) / 空白(合成中=変換) / 改行(合成中=確定)。英数トグルのスロットはレイヤごとに切替先が変わる（かな→英字、英字→数字、数字→英字）","layers":{"kana":{"grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"英数","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"あ","flick":{"left":"い","up":"う","right":"え","down":"お"}},{"row":0,"col":2,"tap":"か","flick":{"left":"き","up":"く","right":"け","down":"こ"}},{"row":0,"col":3,"tap":"さ","flick":{"left":"し","up":"す","right":"せ","down":"そ"}},{"row":1,"col":1,"tap":"た","flick":{"left":"ち","up":"つ","right":"て","down":"と"}},{"row":1,"col":2,"tap":"な","flick":{"left":"に","up":"ぬ","right":"ね","down":"の"}},{"row":1,"col":3,"tap":"は","flick":{"left":"ひ","up":"ふ","right":"へ","down":"ほ"}},{"row":2,"col":1,"tap":"ま","flick":{"left":"み","up":"む","right":"め","down":"も"}},{"row":2,"col":2,"tap":"や","flick":{"left":"「","up":"ゆ","right":"」","down":"よ"}},{"row":2,"col":3,"tap":"ら","flick":{"left":"り","up":"る","right":"れ","down":"ろ"}},{"row":3,"col":1,"label":"゛゜小","tap":{"action":"postModify"}},{"row":3,"col":2,"tap":"わ","flick":{"left":"を","up":"ん","right":"ー"}},{"row":3,"col":3,"tap":"、","flick":{"left":"。","up":"？","right":"！","down":"…"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"eiji":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"☆123","tap":{"action":"setLayer","layer":"digit"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"label":"@#/&","tap":"@","flick":{"left":"#","up":"/","right":"&"}},{"row":0,"col":2,"label":"abc","tap":"a","flick":{"left":"b","up":"c"}},{"row":0,"col":3,"label":"def","tap":"d","flick":{"left":"e","up":"f"}},{"row":1,"col":1,"label":"ghi","tap":"g","flick":{"left":"h","up":"i"}},{"row":1,"col":2,"label":"jkl","tap":"j","flick":{"left":"k","up":"l"}},{"row":1,"col":3,"label":"mno","tap":"m","flick":{"left":"n","up":"o"}},{"row":2,"col":1,"label":"pqrs","tap":"p","flick":{"left":"q","up":"r","right":"s"}},{"row":2,"col":2,"label":"tuv","tap":"t","flick":{"left":"u","up":"v"}},{"row":2,"col":3,"label":"wxyz","tap":"w","flick":{"left":"x","up":"y","right":"z"}},{"row":3,"col":1,"label":"'\"()","tap":"'","flick":{"left":"\"","up":"(","right":")"}},{"row":3,"col":2,"label":".,?!","tap":".","flick":{"left":",","up":"?","right":"!"}},{"row":3,"col":3,"label":"-_/:","tap":"-","flick":{"left":"_","up":"/","right":":"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"digit":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"ABC","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"1"},{"row":0,"col":2,"tap":"2"},{"row":0,"col":3,"tap":"3"},{"row":1,"col":1,"tap":"4"},{"row":1,"col":2,"tap":"5"},{"row":1,"col":3,"tap":"6"},{"row":2,"col":1,"tap":"7"},{"row":2,"col":2,"tap":"8"},{"row":2,"col":3,"tap":"9"},{"row":3,"col":1,"label":"()[]","tap":"(","flick":{"left":")","up":"[","right":"]"}},{"row":3,"col":2,"tap":"0"},{"row":3,"col":3,"label":".,-/","tap":".","flick":{"left":",","up":"-","right":"/"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]}}}};
 
 
 // ==== src/assets.js ====
@@ -5023,6 +5730,11 @@ function createImeView() {
     const { EditorView, Decoration, WidgetType, showTooltip } = cmView;
     const { StateField, StateEffect } = cmState;
 
+    // 候補窓を出さない状態（フリック中）。**下線は残す** —— 入力位置は常に見えてよい。
+    // 状態を CM6 の facet に持たせず素の変数にしているのは、切り替えのたびに
+    // 呼び元が render を打ち直す（ime.setCandidateWindow）ので更新の起点が要らないため
+    let suppressCandidates = false;
+
     /** 未確定文字列を描くウィジェット。実テキストではないので文書は無変更 */
     class ComposingWidget extends WidgetType {
         constructor(segments) {
@@ -5173,6 +5885,7 @@ function createImeView() {
      * 中央スクロールにすると選択位置が窓の途中で固定され、番号と候補の対応が崩れる。
      */
     function candidateTooltip(state) {
+        if (suppressCandidates) return null; // フリック中は候補バーに一本化する
         const focus = state.segments.find((s) => s.kind === "focus");
         const cands = focus?.candidates;
         const idxRaw = focus?.candidateIndex ?? 0;
@@ -5334,8 +6047,17 @@ function createImeView() {
                 : null;
             view.dispatch({ effects: setIme.of(value) });
         },
-        /** 候補窓が出ているか（数字キーの直接選択を先取りするかの判定に使う） */
+        /** 候補窓を抑える（フリックの候補バーと二重に出さない） */
+        setSuppressCandidates(on) {
+            suppressCandidates = !!on;
+        },
+        /**
+         * 候補窓が出ているか（数字キーの直接選択を先取りするかの判定に使う）。
+         * **抑制中は false** —— 窓が見えていないのに物理キーボードの 1-9 が候補選択に
+         * 化けるのは、番号と候補の対応が見えない以上ただの誤爆になる
+         */
         hasCandidates(view) {
+            if (suppressCandidates) return false;
             const v = view?.state.field(imeField, false);
             return !!v?.segments?.some((s) => s.kind === "focus" && s.candidates?.length);
         },
@@ -5405,10 +6127,22 @@ function tapOf(e, repeat) {
     };
 }
 
-/** `cb.hostKey` で来る編集キーを Obsidian の Editor 操作に落とす */
-function applyHostKey(editor, name) {
+/**
+ * `cb.hostKey` で来る編集キーを Obsidian の Editor 操作に落とす。
+ *
+ * フリックからも同じ経路を通る（`flickKey`）。**物理キーボードで feed が false を
+ * 返したときと同じ扱いにする**のが正道で、入力面ごとに編集の意味を作り分けない。
+ * `tap` はフリック由来のときだけ渡り、修飾（Ctrl+BS = 確定アンドゥの不成立分）を見る。
+ */
+function applyHostKey(editor, name, tap) {
     if (!editor) return;
     const cur = editor.getCursor();
+    // 確定アンドゥが不成立のまま透過してきた Ctrl+BS は、文書の undo に落とす
+    // （ラボの applyFlickHostKey と同じ扱い）
+    if (tap?.ctrlKey && name === "Backspace") {
+        editor.undo?.();
+        return;
+    }
     switch (name) {
         case "Backspace": {
             const off = editor.posToOffset(cur);
@@ -5428,8 +6162,26 @@ function applyHostKey(editor, name) {
         case "ArrowRight":
             editor.setCursor(editor.offsetToPos(editor.posToOffset(cur) + 1));
             return;
+        case "ArrowUp":
+        case "ArrowDown": {
+            // 行移動。**`setCursor` の {line, ch} でやる** —— offset 計算だと行の長さを
+            // 知る必要があり、ホストを差し替えられる（minogami 等）以上そこに依存しない
+            const line = cur.line + (name === "ArrowUp" ? -1 : 1);
+            if (line < 0) return;
+            try {
+                editor.setCursor({ line, ch: cur.ch });
+            } catch {
+                // 文書末を越えた等。移動できないだけなので黙って捨てる
+            }
+            return;
+        }
         case "Enter":
             editor.replaceSelection("\n");
+            return;
+        case " ":
+            // フリックの「空白」キー。合成中はセッションが変換に使うので、ここへは
+            // 非合成のときだけ落ちてくる
+            editor.replaceSelection(" ");
             return;
         default:
             // 未対応のキーは黙って捨てる。編集キーの語彙を広げるのは Phase 4
@@ -5453,7 +6205,17 @@ class HechimaIME {
         this.bsGuardUntil = 0; // BS で合成を消し切った直後の吸収窓の期限
         this.chordCodes = new Set(); // 現在の配列が chord の役として宣言している物理キー
         this.view = createImeView(); // CM6 の表示層（null = フォールバック）
+        this.lastSegments = null; // 直近の未確定表示（番号選択・候補バーが参照する）
         this.onStatus = null; // ステータスバー更新のフック
+        // 未確定の描き替えを外へ回すフック。フリックの候補バーが使う。**表示の一元点は
+        // show / hide** —— cb.show だけに仕込むと確定時に戻らない（確定で hide は呼ばれず、
+        // ホストの commit がクリアする契約のため。`docs/flick-engine-embedding.md` §2）
+        this.onSegments = null;
+        // 差し替え可能なホスト（null = Obsidian 標準の CM6 エディタ）。
+        // **CM6 以外のエディタが自分を宿主として名乗るための口**で、縦書きビュー
+        // （obsidian-minogami）がこれを使う。cb 契約の「文書の所有者はホスト」を
+        // プラグインの内側でも一段はっきりさせたもの
+        this.host = null;
     }
 
     // ---- 配列 ------------------------------------------------------------
@@ -5610,7 +6372,25 @@ class HechimaIME {
     // ---- セッション ------------------------------------------------------
 
     editor() {
-        return this.plugin.app.workspace.activeEditor?.editor ?? null;
+        return this.host?.editor ?? this.plugin.app.workspace.activeEditor?.editor ?? null;
+    }
+
+    /**
+     * ホストを差し替える（null で標準の CM6 に戻る）。
+     * host = { editor, show, hide, flashMode, hasCandidates }。
+     * `editor` は Obsidian Editor の部分互換（getCursor / posToOffset / offsetToPos /
+     * getRange / replaceRange / replaceSelection / getSelection / setCursor）。
+     * **移る前に前のホストの表示を消す** —— 残すと未確定が宙に浮いたままになる。
+     */
+    setHost(host) {
+        if (this.host === (host ?? null)) return;
+        this.hide();
+        this.host = host ?? null;
+    }
+
+    /** 候補窓のクリック選択（ホスト表示層からの逆方向配線） */
+    selectCandidate(i) {
+        return this.fep?.selectCandidate(i) ?? false;
     }
 
     /**
@@ -5656,6 +6436,11 @@ class HechimaIME {
     show(segments) {
         this.composing = segments.map((s) => s.text).join("");
         this.lastSegments = segments;
+        this.onSegments?.(segments);
+        if (this.host) {
+            this.host.show(segments);
+            return;
+        }
         if (this.view) {
             this.view.render(this.cmView(), segments);
             return;
@@ -5667,6 +6452,11 @@ class HechimaIME {
     hide() {
         this.composing = "";
         this.lastSegments = null;
+        this.onSegments?.(null);
+        if (this.host) {
+            this.host.hide();
+            return;
+        }
         if (this.view) {
             this.view.render(this.cmView(), null);
             return;
@@ -5704,7 +6494,9 @@ class HechimaIME {
         // モバイルにはステータスバーが無いので、キャレット位置に短時間のバッジを出す。
         // Notice の常時表示は邪魔（実機の指摘）— 切り替えた瞬間だけ、その場で分かればよい
         // 文言は配列名 / 「直接入力」のみ（「あ」「A」のプレフィックスは冗長 — 実機の指摘）
-        this.view?.flashMode(this.cmView(), on ? this.keymapName() : "直接入力");
+        const modeText = on ? this.keymapName() : "直接入力";
+        if (this.host) this.host.flashMode(modeText);
+        else this.view?.flashMode(this.cmView(), modeText);
     }
 
     async toggle() {
@@ -5789,7 +6581,8 @@ class HechimaIME {
         // セッションの routing には触れず、ホストの方針としてここで先取りする。
         if (
             /^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey &&
-            this.view?.hasCandidates(this.cmView()) && this.selectInWindow(Number(e.key))
+            (this.host ? this.host.hasCandidates() : this.view?.hasCandidates(this.cmView())) &&
+            this.selectInWindow(Number(e.key))
         ) {
             e.preventDefault();
             return true;
@@ -5831,6 +6624,46 @@ class HechimaIME {
         // feedUp は chord のシフトホールド判定に必要。取り込んでも既定動作は止めない
         this.fep.feedUp(e);
         return false;
+    }
+
+    // ---- フリック（2 本目の注ぎ口） ---------------------------------------
+
+    /**
+     * かなを直接注ぐ。**配列エンジンを通らない**ので、物理キーボードで何の配列を選んで
+     * いてもフリックの打ち味は変わらない（`replace` は ゛゜小トグルの末尾置換）。
+     * セッションが非 active（直接入力）なら false —— パネル側が IME を ON にしてから出す。
+     */
+    insertKana(text, replace) {
+        return this.fep?.insertKana(text, replace) ?? false;
+    }
+
+    /**
+     * フリックの機能キー（BS / 変換 / 確定 / 矢印）。**物理キーボードと同じ二重経路**で
+     * セッションに先に訊き、未消費ならホストの編集操作に落とす。
+     *
+     * 注意: `tap` は配列エンジンも通る（`fep.feed` の先）。chord の配列を選んでいると
+     * 「空白」（`code: "Space"`）が薙刀式の holder1 として解釈されうる —— ラボの
+     * `/flick/` は romaji 固定なので踏んでいない領域。実機で見る残件。
+     */
+    flickKey(tap) {
+        if (this.fep?.feed(tap)) return true;
+        applyHostKey(this.editor(), tap.key, tap);
+        return false;
+    }
+
+    /** direct レイヤ（英字・数字）。セッションを経由せず本文へ入れる */
+    insertText(text) {
+        this.editor()?.replaceSelection(text);
+    }
+
+    /**
+     * CM6 の候補窓を出すか。フリック中は**キーボード上部の候補バーに一本化する**
+     * （縦長のポップアップはキーボードと干渉する。`docs/flick-engine-embedding.md` §5）。
+     * 下線（未確定の Decoration）は残す —— どこに入力しているかは常に見えていてよい。
+     */
+    setCandidateWindow(on) {
+        this.view?.setSuppressCandidates(!on);
+        if (this.lastSegments) this.view?.render(this.cmView(), this.lastSegments);
     }
 
     isComposing() {
@@ -5875,6 +6708,329 @@ class HechimaIME {
         this.keyEngine = null;
         this.booting = null;
         this.active = false;
+    }
+}
+
+
+// ==== src/flick.js ====
+// フリックキーボード — タッチだけで日本語を打つための入力面。
+//
+// 層の関係（物理キーボードと**別の注ぎ口**に入る。`ime.js` 冒頭の「注ぎ口は 2 つ」）:
+//   pointer events → FlickEngine（flickmap 駆動）→ FlickOp → ime.insertKana / ime.flickKey
+//
+// **配列（keymap v2）とは無関係**に動く。フリックはかなを直接注ぐので、配列エンジンを
+// 通らない —— だから「フリックを出すと物理キーボードの配列が死ぬ」ということが無く、
+// iPad で外付けキーボードと同時に生きたままになる（設定を配列プルダウンと分けた理由）。
+//
+// 候補は**キーボード上部の横スクロール帯**に出す。キャレット追従のポップアップは縦長で
+// キーボードと干渉するため（`docs/flick-engine-embedding.md` §5。ラボで実機検証済み）。
+
+"use strict";
+
+/** 同梱フリックマップの既定 */
+const DEFAULT_FLICKMAP = "flick_standard";
+
+const FLICK_STYLES = `
+/* パネル本体。**position: fixed で app-container の上に置く**。Obsidian の leaf に
+   乗せる（ItemView）案は、モバイルのサイドバーがドロワーで本文に被さること、leaf の
+   アクティブ化でエディタのフォーカスが飛びうることから採らなかった */
+.hechima-flick {
+  position: fixed;
+  z-index: var(--layer-status-bar, 15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 4px;
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  /* キーボード面のスクロール競合を殺す（FlickEngine の root にも同じ指定がある） */
+  touch-action: none;
+  /* Obsidian のテーマ変数を FlickEngine の CSS 変数に流し込む。
+     テーマを切り替えるとキーボードも一緒に着替える */
+  --fe-bg: var(--background-secondary);
+  --fe-key-bg: var(--background-primary);
+  --fe-key-fg: var(--text-normal);
+  --fe-fn-bg: var(--background-modifier-border);
+  --fe-fn-fg: var(--text-muted);
+  --fe-active-bg: var(--interactive-accent);
+  --fe-petal-bg: var(--background-primary-alt);
+  --fe-petal-fg: var(--text-normal);
+  --fe-petal-hot-bg: var(--interactive-accent);
+}
+/* 縦持ち = 画面下部の全幅 */
+.hechima-flick { left: 0; right: 0; bottom: 0; height: var(--hechima-flick-h, 42vh); }
+/* 横持ち = 片側だけ。左右は設定 + パネル上のボタンで切り替える（持ち替えは日常的に
+   起きるので、設定画面を開かせない）。左右分割は将来の段 */
+@media (orientation: landscape) {
+  .hechima-flick {
+    top: 0; bottom: 0; height: auto;
+    width: var(--hechima-flick-w, 46%);
+    border-top: none;
+  }
+  .hechima-flick[data-side="right"] { left: auto; right: 0; border-left: 1px solid var(--background-modifier-border); }
+  .hechima-flick[data-side="left"] { right: auto; left: 0; border-right: 1px solid var(--background-modifier-border); }
+}
+
+/* 本文を押しやる。**被せたままだとキャレットがキーボードの下に隠れる**ので、
+   ワークスペース側を縮めてスクロール可能域に入れる */
+body.hechima-flick-on .workspace { padding-bottom: var(--hechima-flick-h, 42vh); }
+@media (orientation: landscape) {
+  body.hechima-flick-on .workspace { padding-bottom: 0; }
+  body.hechima-flick-on.hechima-flick-right .workspace { padding-right: var(--hechima-flick-w, 46%); }
+  body.hechima-flick-on.hechima-flick-left .workspace { padding-left: var(--hechima-flick-w, 46%); }
+}
+
+/* 候補バー。**高さを常時確保する**（候補の出入りでキーボードが上下にズレない） */
+.hechima-flick-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 2.2em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  /* 横スクロールは生かす（ここだけ touch-action を戻す）。パネルの touchend 抑止からも
+     除外している —— 止めると iOS の慣性スクロールが死ぬ */
+  touch-action: pan-x;
+  scrollbar-width: none;
+  background: var(--background-primary);
+  border-radius: var(--radius-s, 4px);
+}
+.hechima-flick-bar::-webkit-scrollbar { display: none; }
+.hechima-flick-cand {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium, 15px);
+  line-height: 1.6;
+}
+.hechima-flick-cand.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+/* 追加候補（ひらがな/カタカナ展開）は注釈付きで前に置く。選択は ↑↓ で行う
+   （selectCandidate は通常候補のみが対象）ので、タップ選択の対象にはしない */
+.hechima-flick-cand.is-additional { color: var(--text-muted); font-style: italic; }
+
+/* キーボード面 */
+.hechima-flick-area { flex: 1 1 auto; min-height: 0; }
+
+/* 操作ボタン（左右の入替 / 閉じる）。小さく、しかし指で押せる大きさ */
+.hechima-flick-ctl { flex: 0 0 auto; display: flex; gap: 6px; justify-content: flex-end; }
+.hechima-flick-ctl button {
+  padding: 2px 10px;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+/* 左右の入替は横持ちでしか意味がない */
+@media (orientation: portrait) { .hechima-flick-side { display: none; } }
+`;
+
+function injectFlickStyles() {
+    const id = "hechima-flick-styles";
+    let el = document.getElementById(id);
+    if (!el) {
+        el = document.createElement("style");
+        el.id = id;
+        document.head.appendChild(el);
+    }
+    el.textContent = FLICK_STYLES;
+    return () => {
+        el.remove();
+        // FlickEngine 自身が注入する <style> も一緒に畳む（destroy では消えない）
+        document.getElementById("flick-engine-style")?.remove();
+    };
+}
+
+class FlickPanel {
+    constructor(plugin) {
+        this.plugin = plugin;
+        this.ime = plugin.ime;
+        this.root = null;
+        this.kbd = null;
+        this.barEl = null;
+        this.removeStyles = null;
+        this.press = null; // 候補バーのタップ判定（移動量でスクロールと区別）
+        // show() は途中で IME を ON にする = onStatus が飛ぶ。自動表示の追従がそこで
+        // 走ると**二重にマウントされる**ので、開いている最中であることを見せる
+        this.opening = false;
+    }
+
+    get visible() {
+        return !!this.kbd;
+    }
+
+    get side() {
+        return this.plugin.settings.flick?.side === "left" ? "left" : "right";
+    }
+
+    /**
+     * パネルを出す。**IME を ON にするところまで含む** —— フリックはかなを注ぐ入力面なので、
+     * 直接入力のまま出しても何も打てない（`insertKana` は非 active で false を返す）。
+     */
+    async show() {
+        if (this.kbd || this.opening) return;
+        this.opening = true;
+        try {
+            await this.build();
+        } finally {
+            this.opening = false;
+        }
+    }
+
+    async build() {
+        const json = BUNDLED_FLICKMAPS[this.plugin.settings.flick?.map ?? DEFAULT_FLICKMAP];
+        if (!json) throw new Error(`フリックマップが見つからない: ${this.plugin.settings.flick?.map}`);
+        const map = FlickEngine.decodeFlickmap(json);
+        if (!this.ime.active) await this.ime.setActive(true);
+
+        this.removeStyles ??= injectFlickStyles();
+        this.root = document.createElement("div");
+        this.root.className = "hechima-flick";
+        this.root.dataset.side = this.side;
+        this.barEl = this.root.createDiv({ cls: "hechima-flick-bar" });
+        const area = this.root.createDiv({ cls: "hechima-flick-area" });
+        this.buildControls();
+        document.body.appendChild(this.root);
+        document.body.classList.add("hechima-flick-on", `hechima-flick-${this.side}`);
+
+        this.kbd = FlickEngine.mount(area, map, {
+            // postModify（゛゜小）の対象は**セッションの表示が正**。BS で編集されてもずれない
+            getComposingTail: () => this.ime.composing,
+            onOp: (op) => this.onOp(op),
+        });
+
+        this.guardFocus();
+        // 未確定の描き替えを候補バーにも回す（表示の一元点は ime.show / ime.hide）
+        this.ime.onSegments = (segments) => this.render(segments);
+        this.ime.setCandidateWindow(false); // 候補はバーに一本化する
+        this.render(this.ime.lastSegments ?? null);
+        this.plugin.applyInputMode();
+    }
+
+    hide() {
+        if (!this.kbd) return;
+        this.kbd.destroy();
+        this.kbd = null;
+        this.ime.onSegments = null;
+        this.ime.setCandidateWindow(true);
+        this.root?.remove();
+        this.root = null;
+        this.barEl = null;
+        document.body.classList.remove("hechima-flick-on", "hechima-flick-right", "hechima-flick-left");
+        this.plugin.applyInputMode();
+    }
+
+    async toggle() {
+        if (this.kbd) this.hide();
+        else await this.show();
+        return this.visible;
+    }
+
+    /** 左右の入替。**設定にも書き戻す**（次に出すときも同じ側に出る） */
+    async setSide(side) {
+        this.plugin.settings.flick ??= {};
+        this.plugin.settings.flick.side = side === "left" ? "left" : "right";
+        await this.plugin.saveSettings();
+        if (!this.root) return;
+        this.root.dataset.side = this.side;
+        document.body.classList.remove("hechima-flick-right", "hechima-flick-left");
+        document.body.classList.add(`hechima-flick-${this.side}`);
+    }
+
+    buildControls() {
+        const ctl = this.root.createDiv({ cls: "hechima-flick-ctl" });
+        const swap = ctl.createEl("button", { cls: "hechima-flick-side", text: "⇄ 左右" });
+        swap.setAttribute("aria-label", "横持ちのときの表示位置を入れ替える");
+        swap.addEventListener("click", () => void this.setSide(this.side === "right" ? "left" : "right"));
+        const close = ctl.createEl("button", { text: "閉じる" });
+        close.addEventListener("click", () => this.hide());
+    }
+
+    /**
+     * FlickOp の配線（`docs/flick-engine-embedding.md` §3）。
+     * かなはセッションへ直接、機能キーはセッション → 未消費ならエディタ操作、
+     * direct レイヤ（英字・数字）はエディタへ直接。
+     */
+    onOp(op) {
+        if (op.type === "kana") this.ime.insertKana(op.text, op.replace);
+        else if (op.type === "key") this.ime.flickKey(op.tap);
+        else if (op.type === "text") this.ime.insertText(op.text);
+    }
+
+    /**
+     * **エディタからフォーカスを奪わない。** 奪うとキャレットが消え、確定の宛先を失う。
+     * タッチは touchend の既定動作（ダブルタップズーム・フォーカス移動）を止め、
+     * マウスは mousedown を止める（PC でマウスで試すとき用）。
+     * **候補バーだけは touchend を止めない** —— 止めると iOS の慣性スクロールが死ぬ。
+     */
+    guardFocus() {
+        this.root.addEventListener(
+            "touchend",
+            (e) => {
+                if (e.target?.closest?.(".hechima-flick-bar")) return;
+                e.preventDefault();
+            },
+            { passive: false }
+        );
+        this.root.addEventListener("mousedown", (e) => e.preventDefault());
+
+        // 候補のタップ選択。**移動量で横スクロールと区別する**（8px 未満 = 選択）
+        this.barEl.addEventListener("pointerdown", (e) => {
+            const t = e.target?.closest?.(".hechima-flick-cand");
+            const idx = t?.dataset?.idx;
+            this.press = idx === undefined ? null : { x: e.clientX, y: e.clientY, idx: Number(idx) };
+        });
+        this.barEl.addEventListener("pointerup", (e) => {
+            const press = this.press;
+            this.press = null;
+            if (!press) return;
+            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) this.ime.selectCandidate(press.idx);
+        });
+    }
+
+    /** 候補バーを描き替える。segments が空なら空にする（高さは CSS で確保済み） */
+    render(segments) {
+        if (!this.barEl) return;
+        this.kbd?.setComposing(!!segments?.length);
+        const focus = segments?.find((s) => s.kind === "focus");
+        const cands = focus?.candidates;
+        const additional = focus?.additional ?? [];
+        if (!focus || !cands || (cands.length < 2 && !additional.length)) {
+            this.barEl.replaceChildren();
+            return;
+        }
+        const inAdditional = focus.additionalIndex !== undefined;
+        const items = [];
+        additional.forEach((a, i) => {
+            const el = document.createElement("span");
+            el.className =
+                "hechima-flick-cand is-additional" + (inAdditional && i === focus.additionalIndex ? " is-selected" : "");
+            el.textContent = a.text;
+            el.title = a.annotation ?? "";
+            items.push(el);
+        });
+        cands.forEach((text, i) => {
+            const el = document.createElement("span");
+            el.className = "hechima-flick-cand" + (!inAdditional && i === (focus.candidateIndex ?? 0) ? " is-selected" : "");
+            el.textContent = text;
+            el.dataset.idx = String(i);
+            items.push(el);
+        });
+        this.barEl.replaceChildren(...items);
+        this.barEl.querySelector(".is-selected")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+
+    destroy() {
+        this.hide();
+        this.removeStyles?.();
+        this.removeStyles = null;
     }
 }
 
@@ -6186,8 +7342,19 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
     async onload() {
         this.settings = Object.assign(
-            { keymapId: "romaji", keyboardLayout: "jis", roleKeys: {} },
+            {
+                keymapId: "romaji",
+                keyboardLayout: "jis",
+                roleKeys: {},
+                // フリックキーボード。**配列とは別立て**（keymap v2 と flickmap は別の
+                // 語彙で、混ぜると「フリックを選ぶと物理キーボードの配列が死ぬ」ことになる）
+                flick: { auto: false, side: "right", map: "flick_standard" },
+            },
             await this.loadSettingsWithMigration()
+        );
+        this.settings.flick = Object.assign(
+            { auto: false, side: "right", map: "flick_standard" },
+            this.settings.flick ?? {}
         );
         // **旧 id の版が同時に動いていないか。** 両方が有効だと 2 つの IME が打鍵を
         // 奪い合い、原因の分からない挙動になる。id 改名（0.11.0）の後始末
@@ -6243,6 +7410,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
         };
         this.ime = new HechimaIME(this);
         this.ime.keymapId = this.settings.keymapId;
+        this.flick = new FlickPanel(this);
         this.fep = null; // 偵察の「テスト変換」用（IME とは別に持つ）
         this.capturing = false; // キー入力の偵察が動いているか
         this.keyLog = [];
@@ -6262,7 +7430,20 @@ module.exports = class HechimaProbePlugin extends Plugin {
         this.addCommand({
             id: "reconvert",
             name: "再変換（選択したテキストを変換し直す）",
-            editorCallback: () => void this.ime.reconvertSelection(),
+            // ★`editorCallback` にすると **Obsidian の MarkdownView のときだけ**発火する。
+            // ホストを差し替えられるようにした（ime.setHost）以上、「エディタがあるか」は
+            // Obsidian ではなく **IME 自身のホスト**に訊くのが正しい。
+            // 縦書きビュー（obsidian-tategaki）ではこれが無いとコマンドが灰色のままになる
+            checkCallback: (checking) => {
+                if (!this.ime.editor()) return false;
+                if (!checking) void this.ime.reconvertSelection();
+                return true;
+            },
+        });
+        this.addCommand({
+            id: "toggle-flick",
+            name: "フリックキーボードの表示 / 非表示",
+            callback: () => void this.toggleFlick(),
         });
         this.addCommand({
             id: "user-dictionary",
@@ -6302,7 +7483,10 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
         // ステータスバー（モバイルには出ないが、あっても害はない）
         this.statusEl = this.addStatusBarItem();
-        this.ime.onStatus = () => this.renderStatus();
+        this.ime.onStatus = () => {
+            this.renderStatus();
+            void this.syncFlickAuto();
+        };
         this.renderStatus();
         this.statusEl.onclick = () => void this.ime.toggle();
 
@@ -6333,6 +7517,62 @@ module.exports = class HechimaProbePlugin extends Plugin {
             this.register(injectStyles()); // unload で撤去（次のロードで確実に差し替わる）
             this.registerEditorExtension(this.ime.view.extension);
         }
+
+        // フリック中の `inputmode="none"` は**エディタの DOM に付く**ので、開くたび・
+        // 切り替えるたびに付け直す（後から開いたノートに付いていないと、そこで OS の
+        // ソフトウェアキーボードが出てフリックと二重になる）
+        for (const ev of ["active-leaf-change", "layout-change"]) {
+            this.registerEvent(this.app.workspace.on(ev, () => this.applyInputMode()));
+        }
+    }
+
+    /** フリックキーボードの開閉。失敗しても入力を殺さない */
+    async toggleFlick() {
+        try {
+            await this.flick.toggle();
+        } catch (e) {
+            new Notice(`hechima: フリックキーボードを出せません — ${String(e?.message ?? e)}`);
+        }
+    }
+
+    /**
+     * 「モバイルで自動表示」が有効なら、日本語入力の ON / OFF にパネルを追従させる。
+     * **デスクトップでは追従しない** —— 物理キーボードがある環境で IME を ON にした
+     * だけで画面の半分が埋まるのは、ただの邪魔（出したければコマンドで出せる）。
+     */
+    async syncFlickAuto() {
+        if (!this.settings.flick?.auto || !Platform.isMobile) return;
+        // 開いている最中にここへ戻ってくる（show の中の setActive が onStatus を飛ばす）。
+        // **多重に開かないのは FlickPanel.show の仕事**にしてある —— 呼び口ごとにガードを
+        // 置くと、どれか 1 つが壊れても誰も気づけない（テストが赤くならない形）
+        if (this.ime.active && !this.flick.visible) await this.toggleFlick();
+        else if (!this.ime.active && this.flick.visible) this.flick.hide();
+    }
+
+    /**
+     * OS のソフトウェアキーボードの抑止。フリック中のエディタに `inputmode="none"` を
+     * 付ける（hechima は OS IME に依存しないので、これでフリックだけが入力手段になる）。
+     *
+     * **元の値を控えてから上書きする。** Obsidian 側が inputmode を使っていた場合に、
+     * 消したまま戻せなくなるのを避ける（実機で確かめるまで、使っていない前提を置かない）。
+     */
+    applyInputMode() {
+        const on = !!this.flick?.visible;
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            const dom = leaf?.view?.editor?.cm?.contentDOM;
+            if (!dom) return;
+            if (on) {
+                if (!dom.hasAttribute("data-hechima-inputmode")) {
+                    dom.setAttribute("data-hechima-inputmode", dom.getAttribute("inputmode") ?? "");
+                }
+                dom.setAttribute("inputmode", "none");
+            } else if (dom.hasAttribute("data-hechima-inputmode")) {
+                const prev = dom.getAttribute("data-hechima-inputmode");
+                dom.removeAttribute("data-hechima-inputmode");
+                if (prev) dom.setAttribute("inputmode", prev);
+                else dom.removeAttribute("inputmode");
+            }
+        });
     }
 
     renderStatus() {
@@ -6385,6 +7625,8 @@ module.exports = class HechimaProbePlugin extends Plugin {
 
     onunload() {
         this.dlNotice?.hide();
+        this.flick?.destroy();
+        this.applyInputMode(); // 付けた inputmode を戻してから畳む
         this.ime?.dispose();
         this.engine?.dispose();
         this.fep?.reset();
@@ -7188,6 +8430,57 @@ class HechimaSettingTab extends PluginSettingTab {
                     });
             }
         }
+
+        // --- フリックキーボード ---
+        //
+        // **配列プルダウンとは別立てにしてある。** 配列（keymap v2）は打鍵をかなに変える
+        // 規則、フリックは指の動きをかなに変える盤面（flickmap）で、語彙もエンジンも別。
+        // 同じプルダウンに混ぜると、フリックを選んだ瞬間に物理キーボードの配列が死ぬ ——
+        // iPad で外付けキーボードを繋いだままフリックも使う、が成立しなくなる。
+        containerEl.createEl("h4", { text: "フリックキーボード" });
+        const flickDesc = containerEl.createEl("p", {
+            text:
+                "タッチだけで日本語を打つための入力面です。物理キーボードの配列とは独立して" +
+                "動くので、外付けキーボードと同時に使えます。" +
+                "コマンド「フリックキーボードの表示 / 非表示」で開閉できます。",
+        });
+        flickDesc.style.color = "var(--text-muted)";
+        flickDesc.style.fontSize = "var(--font-ui-smaller, .85em)";
+
+        new Setting(containerEl)
+            .setName("いま表示する")
+            .setDesc("画面下（横向きのときは左右どちらか）にキーボードを出します")
+            .addToggle((t) => {
+                t.setValue(this.plugin.flick.visible);
+                t.onChange(() => void this.plugin.toggleFlick());
+            });
+
+        new Setting(containerEl)
+            .setName("モバイルで自動的に出す")
+            .setDesc(
+                "スマホ / タブレットで日本語入力を ON にしたとき、フリックキーボードも一緒に" +
+                    "出します（OFF にすると引っ込みます）。デスクトップでは何もしません"
+            )
+            .addToggle((t) => {
+                t.setValue(!!this.plugin.settings.flick?.auto);
+                t.onChange(async (on) => {
+                    this.plugin.settings.flick.auto = on;
+                    await this.plugin.saveSettings();
+                });
+            });
+
+        new Setting(containerEl)
+            .setName("横向きのときの位置")
+            .setDesc(
+                "横持ちでは画面の片側にだけ出します。キーボード上の「⇄ 左右」ボタンでも" +
+                    "その場で入れ替えられます（持ち替えるたびに設定を開かなくてよいように）"
+            )
+            .addDropdown((d) => {
+                d.addOption("right", "右");
+                d.addOption("left", "左");
+                d.setValue(this.plugin.settings.flick?.side ?? "right");
+                d.onChange(async (side) => void this.plugin.flick.setSide(side));
+            });
 
         // **置き場所を出す。** vault の中にあるファイルなので、直接見たり退避したりできる
         // ことが分かるべき（iPad で実機報告）
