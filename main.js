@@ -6708,9 +6708,24 @@ class HechimaIME {
      * 配列は「物理キーボードの打鍵をかなに変える」規則で、フリックはそこを通る筋合いがない。
      */
     flickKey(tap) {
+        // **変換中の ←→ は文節の伸縮**（タッチ入力の作法。iOS / Android の日本語入力と同じ）。
+        // 文節の「移動」は要らない —— 候補をタップすればその文節が確定して次へ進むので
+        // （tapCandidate）、注目を左右に動かす操作が出番を持たない。
+        // 物理キーボードは従来どおり ←→ が移動 / Shift+←→ が伸縮。
+        if (
+            !tap.shiftKey && (tap.key === "ArrowLeft" || tap.key === "ArrowRight") &&
+            this.hasCandidates()
+        ) {
+            tap = { ...tap, shiftKey: true };
+        }
         if (this.fep?.feedDirect(tap)) return true;
         applyHostKey(this.editor(), tap.key, tap);
         return false;
+    }
+
+    /** 変換中か（候補が出ている = 候補選択中。表示の状態が唯一の情報源） */
+    hasCandidates() {
+        return !!this.lastSegments?.some((s) => s.kind === "focus" && s.candidates?.length);
     }
 
     /**
@@ -6832,38 +6847,54 @@ const FLICK_STYLES = `
   --fe-petal-fg: var(--text-normal);
   --fe-petal-hot-bg: var(--interactive-accent);
 }
-/* 縦持ち = 画面下部の全幅 */
-.hechima-flick { left: 0; right: 0; bottom: 0; height: var(--hechima-flick-h, 42vh); }
+/* 寸法は **body に置く**。パネル（fixed）と本文の押しやり（.workspace の padding）の
+   両方から参照するので、パネル側に置くと本文側から見えない */
+body.hechima-flick-on {
+  /* 縦持ちの高さ */
+  --hechima-flick-h: 42vh;
+  /* 横持ちの幅。**px の上限を置く** —— 比率だけだと画面が広いほど大きくなり、
+     iPad 横持ちと Chromebook で「大きすぎる」になった（実機。46% = 540px 相当）。
+     キーボードに要るのは**指の届く大きさ**であって、画面の広さに比例する量ではない */
+  --hechima-flick-w: min(46%, 360px);
+}
+
+/* 縦持ち = 画面下部の全幅。**モバイルのツールバーは覆わない** —— Obsidian の
+   下部ツールバーを塞ぐと、使うたびにフリックを閉じることになる（実機の指摘）。
+   高さは JS が測って --hechima-flick-bottom に入れる（無い環境では 0） */
+.hechima-flick {
+  left: 0; right: 0;
+  bottom: var(--hechima-flick-bottom, 0px);
+  height: var(--hechima-flick-h);
+}
 /* 横持ち = 片側だけ。左右は設定 + パネル上のボタンで切り替える（持ち替えは日常的に
    起きるので、設定画面を開かせない）。左右分割は将来の段 */
 @media (orientation: landscape) {
   .hechima-flick {
-    top: 0; bottom: 0; height: auto;
-    width: var(--hechima-flick-w, 46%);
+    top: 0; height: auto;
+    width: var(--hechima-flick-w);
     border-top: none;
   }
   .hechima-flick[data-side="right"] { left: auto; right: 0; border-left: 1px solid var(--background-modifier-border); }
   .hechima-flick[data-side="left"] { right: auto; left: 0; border-right: 1px solid var(--background-modifier-border); }
-}
 
-/* デスクトップ（Chromebook 等）は**画面が横長で高さもある**ので、モバイル横持ちと
-   同じ 46% を与えると馬鹿でかくなる（実機の指摘）。幅を絞り、キー面は縦の真ん中に置く
-   —— キーボードは 5 列 4 行の横長なので、幅で決めた高さより縦の余白が余る */
-.hechima-flick[data-env="desktop"] { --hechima-flick-w: min(38%, 360px); }
-.hechima-flick[data-env="desktop"] .hechima-flick-area {
-  flex: 0 1 auto;
-  width: 100%;
-  aspect-ratio: 5 / 4;
-  margin: auto 0; /* 上下に等分の余白 = 縦中央 */
+  /* 横持ちではパネルが画面の高さいっぱいになるので、中身を**塊のまま縦中央**に置く。
+     ★キー面だけを中央にすると、**候補バーが画面最上部（タイトルバーのあたり）に
+     取り残される** —— 候補は打っている指の近く、つまりキーボードのすぐ上に要る（実機の指摘）。
+     margin-top: auto と margin-bottom: auto で上下に等分の余白を作る */
+  .hechima-flick-bar { margin-top: auto; }
+  .hechima-flick-ctl { margin-bottom: auto; }
+  .hechima-flick-area { flex: 0 1 auto; aspect-ratio: 5 / 4; }
 }
 
 /* 本文を押しやる。**被せたままだとキャレットがキーボードの下に隠れる**ので、
    ワークスペース側を縮めてスクロール可能域に入れる */
-body.hechima-flick-on .workspace { padding-bottom: var(--hechima-flick-h, 42vh); }
+body.hechima-flick-on .workspace {
+  padding-bottom: calc(var(--hechima-flick-h) + var(--hechima-flick-bottom, 0px));
+}
 @media (orientation: landscape) {
   body.hechima-flick-on .workspace { padding-bottom: 0; }
-  body.hechima-flick-on.hechima-flick-right .workspace { padding-right: var(--hechima-flick-w, 46%); }
-  body.hechima-flick-on.hechima-flick-left .workspace { padding-left: var(--hechima-flick-w, 46%); }
+  body.hechima-flick-on.hechima-flick-right .workspace { padding-right: var(--hechima-flick-w); }
+  body.hechima-flick-on.hechima-flick-left .workspace { padding-left: var(--hechima-flick-w); }
 }
 
 /* 候補バー。**高さを常時確保する**（候補の出入りでキーボードが上下にズレない） */
@@ -6976,11 +7007,13 @@ class FlickPanel {
         if (!this.ime.active) await this.ime.setActive(true);
 
         this.removeStyles ??= injectFlickStyles();
+        this.measureChrome();
         this.root = document.createElement("div");
         this.root.className = "hechima-flick";
         this.root.dataset.side = this.side;
-        // 幅の既定はデスクトップとモバイルで変える（CSS の `orientation` だけでは、
-        // 横長のデスクトップ画面とタブレット横持ちを区別できない）
+        // 端末の種別は幅の分岐に**使わない**（一時期 desktop だけ細くしていたが、
+        // iPad 横持ちも同じく大きすぎた = 分けるべきなのは端末ではなく「画面の広さ」で、
+        // それは px の上限で足りる）。診断のために印だけ残す
         this.root.dataset.env = Platform.isMobile ? "mobile" : "desktop";
         this.barEl = this.root.createDiv({ cls: "hechima-flick-bar" });
         const area = this.root.createDiv({ cls: "hechima-flick-area" });
@@ -6995,6 +7028,10 @@ class FlickPanel {
         });
 
         this.guardFocus();
+        // 回転・ウィンドウの変化でツールバーの高さも変わる（横持ちで消える環境もある）
+        this.onResize = () => this.measureChrome();
+        window.addEventListener("resize", this.onResize);
+        window.addEventListener("orientationchange", this.onResize);
         // 未確定の描き替えを候補バーにも回す（表示の一元点は ime.show / ime.hide）
         this.ime.onSegments = (segments) => this.render(segments);
         this.ime.setCandidateWindow(false); // 候補はバーに一本化する
@@ -7008,6 +7045,12 @@ class FlickPanel {
         this.kbd = null;
         this.ime.onSegments = null;
         this.ime.setCandidateWindow(true);
+        if (this.onResize) {
+            window.removeEventListener("resize", this.onResize);
+            window.removeEventListener("orientationchange", this.onResize);
+            this.onResize = null;
+        }
+        document.body.style.removeProperty("--hechima-flick-bottom");
         this.root?.remove();
         this.root = null;
         this.barEl = null;
@@ -7019,6 +7062,20 @@ class FlickPanel {
         if (this.kbd) this.hide();
         else await this.show();
         return this.visible;
+    }
+
+    /**
+     * Obsidian のモバイルツールバー（画面下部）を覆わないように、その高さを測って
+     * `--hechima-flick-bottom` に流す。
+     *
+     * **塞ぐと詰む** —— ツールバーを使いたくなるたびにフリックを閉じることになる
+     * （Android スマホの縦持ちで実機報告）。クラス名は版で変わりうるので 2 つ見て、
+     * 見つからなければ 0（デスクトップにはそもそも無い）。
+     */
+    measureChrome() {
+        const el = document.querySelector(".mobile-toolbar, .mobile-navbar");
+        const h = el ? Math.round(el.getBoundingClientRect().height) : 0;
+        document.body.style.setProperty("--hechima-flick-bottom", `${h}px`);
     }
 
     /** 左右の入替。**設定にも書き戻す**（次に出すときも同じ側に出る） */
