@@ -3082,7 +3082,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.20.0";
+	const HECHIMA_VERSION = "0.21.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3545,6 +3545,43 @@ var Hechima = (function () {
 			clear();
 			cb.commit(text);
 		}
+		/**
+		* 注目文節までを確定し、**残りを候補選択状態のまま残す**（v0.21.0+）。
+		*
+		* フリック等のタッチ入力では、候補をタップした時点でその文節が確定して次の文節へ
+		* 進むのが作法（iOS / Android の日本語入力と同じ）。全体確定しか無いと、タップの
+		* たびに「まだ確定していない」状態が積み上がってしまう。
+		*
+		* 注目が最後の文節なら全体確定（= commit）と同じ。候補選択中でなければ false。
+		* **確定アンドゥの対象外**にしてある —— 戻す先が「確定した前半」と「残った後半」に
+		* 割れていて、片方だけ戻すと文書とセッションが食い違うため。
+		*/
+		function commitFocused() {
+			if (!active || !segs) return false;
+			const cur = segs;
+			if (focus >= cur.length - 1) {
+				commit(joined());
+				return true;
+			}
+			const head = cur.slice(0, focus + 1);
+			const tail = cur.slice(focus + 1);
+			const text = head.map((s, i) => segText(s, i)).join("");
+			if (cb.learn && !eiji) try {
+				cb.learn(head.map((s, i) => ({
+					key: s.key,
+					value: segText(s, i)
+				})));
+			} catch {}
+			segs = tail;
+			focus = 0;
+			kana = tail.map((s) => s.key).join("");
+			lastCommit = null;
+			genId++;
+			resetAddl();
+			cb.commit(text);
+			render();
+			return true;
+		}
 		async function reconvert(surface) {
 			if (!active || !cb.reconvert || segs || composing()) return false;
 			if (engine && engine.getState().isComposing) return false;
@@ -3860,9 +3897,13 @@ var Hechima = (function () {
 			}
 			return false;
 		}
-		function feed(e) {
-			if (!active) return false;
-			if (engine) return engineDown(e);
+		/**
+		* 機能キー（Ctrl+BS / Enter / Escape / BS / Space / 矢印）の内蔵処理。
+		*
+		* feed（配列エンジン未注入のとき）と **feedDirect（注入の有無に関わらず）** の共通部分。
+		* 戻り値 null = 機能キーではない（呼び元が印字キーとして続ける）。
+		*/
+		function builtinNav(e) {
 			if (e.key === "Backspace" && e.ctrlKey && !e.altKey && !e.metaKey && !composing()) return undoCommit() ? true : false;
 			if (e.ctrlKey || e.altKey || e.metaKey) return false;
 			const k = e.key;
@@ -3916,6 +3957,14 @@ var Hechima = (function () {
 				else candPrev();
 				return true;
 			}
+			return null;
+		}
+		function feed(e) {
+			if (!active) return false;
+			if (engine) return engineDown(e);
+			const nav = builtinNav(e);
+			if (nav !== null) return nav;
+			const k = e.key;
 			if (k.length === 1 && k >= " " && k <= "~") {
 				if (/[a-zA-Z]/.test(k) && e.shiftKey) {
 					if (segs) commit(joined());
@@ -3986,6 +4035,12 @@ var Hechima = (function () {
 			feedUp(e) {
 				return engine ? engineUp(e) : false;
 			},
+			feedDirect(e) {
+				if (!active) return false;
+				const nav = builtinNav(e);
+				return nav === null ? false : nav;
+			},
+			commitFocused,
 			setEngine(eng, keyOf) {
 				if (engine && engine !== eng) {
 					try {
@@ -6377,7 +6432,10 @@ class HechimaIME {
 
     /**
      * ホストを差し替える（null で標準の CM6 に戻る）。
-     * host = { editor, show, hide, flashMode, hasCandidates }。
+     * host = { editor, show, hide, flashMode, hasCandidates, contentEl? }。
+     * `contentEl`（任意）は**そのホストの編集要素**。フリック中の `inputmode="none"` を
+     * 付ける先で、これが無いと差し替えホスト（縦書きビュー等）でだけ OS のソフトウェア
+     * キーボードが出る（iPad で実機報告）—— CM6 ではないので leaf からは辿れない。
      * `editor` は Obsidian Editor の部分互換（getCursor / posToOffset / offsetToPos /
      * getRange / replaceRange / replaceSelection / getSelection / setCursor）。
      * **移る前に前のホストの表示を消す** —— 残すと未確定が宙に浮いたままになる。
@@ -6386,6 +6444,8 @@ class HechimaIME {
         if (this.host === (host ?? null)) return;
         this.hide();
         this.host = host ?? null;
+        // フリック中なら、移った先のホストにも OS キーボードの抑止を付け直す
+        this.plugin.applyInputMode?.();
     }
 
     /** 候補窓のクリック選択（ホスト表示層からの逆方向配線） */
@@ -6641,14 +6701,28 @@ class HechimaIME {
      * フリックの機能キー（BS / 変換 / 確定 / 矢印）。**物理キーボードと同じ二重経路**で
      * セッションに先に訊き、未消費ならホストの編集操作に落とす。
      *
-     * 注意: `tap` は配列エンジンも通る（`fep.feed` の先）。chord の配列を選んでいると
-     * 「空白」（`code: "Space"`）が薙刀式の holder1 として解釈されうる —— ラボの
-     * `/flick/` は romaji 固定なので踏んでいない領域。実機で見る残件。
+     * ★訊く先は `feed` ではなく **`feedDirect`（hechima v0.21.0+）** ——
+     * こちらは**配列エンジンを通らない**。フリックの「変換」は `code: "Space"` で届くので、
+     * feed に流すと薙刀式では holder1（相互シフト）として食われ、**変換が一切効かない**
+     * （実機で発生 2026-08-12。ひらがなまでは打てるので原因が見えにくい）。
+     * 配列は「物理キーボードの打鍵をかなに変える」規則で、フリックはそこを通る筋合いがない。
      */
     flickKey(tap) {
-        if (this.fep?.feed(tap)) return true;
+        if (this.fep?.feedDirect(tap)) return true;
         applyHostKey(this.editor(), tap.key, tap);
         return false;
+    }
+
+    /**
+     * 候補バーのタップ選択（フリック）。**選んだ文節はそこで確定し、残りが続く** ——
+     * タッチ入力の作法（iOS / Android の日本語入力と同じ）。
+     *
+     * 物理キーボードの候補窓クリック（`selectCandidate`）は選ぶだけで確定しない。
+     * **意図的な差**で、あちらは標準 IME の作法（Enter まで確定しない）に従う。
+     */
+    tapCandidate(i) {
+        if (!this.fep?.selectCandidate(i)) return false;
+        return this.fep.commitFocused();
     }
 
     /** direct レイヤ（英字・数字）。セッションを経由せず本文へ入れる */
@@ -6770,6 +6844,17 @@ const FLICK_STYLES = `
   }
   .hechima-flick[data-side="right"] { left: auto; right: 0; border-left: 1px solid var(--background-modifier-border); }
   .hechima-flick[data-side="left"] { right: auto; left: 0; border-right: 1px solid var(--background-modifier-border); }
+}
+
+/* デスクトップ（Chromebook 等）は**画面が横長で高さもある**ので、モバイル横持ちと
+   同じ 46% を与えると馬鹿でかくなる（実機の指摘）。幅を絞り、キー面は縦の真ん中に置く
+   —— キーボードは 5 列 4 行の横長なので、幅で決めた高さより縦の余白が余る */
+.hechima-flick[data-env="desktop"] { --hechima-flick-w: min(38%, 360px); }
+.hechima-flick[data-env="desktop"] .hechima-flick-area {
+  flex: 0 1 auto;
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  margin: auto 0; /* 上下に等分の余白 = 縦中央 */
 }
 
 /* 本文を押しやる。**被せたままだとキャレットがキーボードの下に隠れる**ので、
@@ -6894,6 +6979,9 @@ class FlickPanel {
         this.root = document.createElement("div");
         this.root.className = "hechima-flick";
         this.root.dataset.side = this.side;
+        // 幅の既定はデスクトップとモバイルで変える（CSS の `orientation` だけでは、
+        // 横長のデスクトップ画面とタブレット横持ちを区別できない）
+        this.root.dataset.env = Platform.isMobile ? "mobile" : "desktop";
         this.barEl = this.root.createDiv({ cls: "hechima-flick-bar" });
         const area = this.root.createDiv({ cls: "hechima-flick-area" });
         this.buildControls();
@@ -6944,13 +7032,21 @@ class FlickPanel {
         document.body.classList.add(`hechima-flick-${this.side}`);
     }
 
+    /**
+     * 操作ボタン（左右の入替 / 閉じる）。
+     *
+     * ★**`click` ではなく `pointerup` で拾う。** パネルは touchend の既定動作を止めて
+     * いる（ダブルタップズームとフォーカス移動の抑止）ので、**タッチ端末では click が
+     * 発火しない** —— Android と iPad でボタンが完全に無反応だった（マウスの
+     * ChromeOS だけ効いていて、実機 3 台のうち 1 台でしか動かない状態に気づけなかった）。
+     */
     buildControls() {
         const ctl = this.root.createDiv({ cls: "hechima-flick-ctl" });
         const swap = ctl.createEl("button", { cls: "hechima-flick-side", text: "⇄ 左右" });
         swap.setAttribute("aria-label", "横持ちのときの表示位置を入れ替える");
-        swap.addEventListener("click", () => void this.setSide(this.side === "right" ? "left" : "right"));
-        const close = ctl.createEl("button", { text: "閉じる" });
-        close.addEventListener("click", () => this.hide());
+        swap.addEventListener("pointerup", () => void this.setSide(this.side === "right" ? "left" : "right"));
+        const close = ctl.createEl("button", { cls: "hechima-flick-close", text: "閉じる" });
+        close.addEventListener("pointerup", () => this.hide());
     }
 
     /**
@@ -6991,7 +7087,7 @@ class FlickPanel {
             const press = this.press;
             this.press = null;
             if (!press) return;
-            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) this.ime.selectCandidate(press.idx);
+            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) this.ime.tapCandidate(press.idx);
         });
     }
 
@@ -7475,6 +7571,7 @@ module.exports = class HechimaProbePlugin extends Plugin {
                         `変換エンジン   ${typeof v.HechimaModule === "function" ? "OK（mozc wasm）" : "見つからない"}`,
                         `配列エンジン   ${v.KeymapEngine?.version ? `v${v.KeymapEngine.version}` : "見つからない"}`,
                         `セッション層   ${v.Hechima?.version ? `v${v.Hechima.version}` : "見つからない"}`,
+                        `フリック       ${v.FlickEngine?.version ? `v${v.FlickEngine.version}` : "見つからない"}`,
                         `CodeMirror     ${cmView && cmState ? "OK" : `取得できない: ${cmLoadError ?? "不明"}`}`,
                     ].join("\n")
                 ).open();
@@ -7557,22 +7654,38 @@ module.exports = class HechimaProbePlugin extends Plugin {
      * 消したまま戻せなくなるのを避ける（実機で確かめるまで、使っていない前提を置かない）。
      */
     applyInputMode() {
-        const on = !!this.flick?.visible;
+        const restore = (dom) => {
+            if (!dom?.hasAttribute?.("data-hechima-inputmode")) return;
+            const prev = dom.getAttribute("data-hechima-inputmode");
+            dom.removeAttribute("data-hechima-inputmode");
+            if (prev) dom.setAttribute("inputmode", prev);
+            else dom.removeAttribute("inputmode");
+        };
+        // **前回付けた分を先に全部戻す。** ホストが替わった / タブが閉じた を一様に扱える
+        // ——「いま見えている編集要素」だけを見ていると、外れた要素に抑止が residual で残り、
+        // フリックを閉じてもそこだけ OS のキーボードが出なくなる
+        for (const dom of this.inputModeApplied ?? []) restore(dom);
+        this.inputModeApplied = [];
+        if (!this.flick?.visible) return;
+
+        const targets = [];
         this.app.workspace.iterateAllLeaves((leaf) => {
             const dom = leaf?.view?.editor?.cm?.contentDOM;
-            if (!dom) return;
-            if (on) {
-                if (!dom.hasAttribute("data-hechima-inputmode")) {
-                    dom.setAttribute("data-hechima-inputmode", dom.getAttribute("inputmode") ?? "");
-                }
-                dom.setAttribute("inputmode", "none");
-            } else if (dom.hasAttribute("data-hechima-inputmode")) {
-                const prev = dom.getAttribute("data-hechima-inputmode");
-                dom.removeAttribute("data-hechima-inputmode");
-                if (prev) dom.setAttribute("inputmode", prev);
-                else dom.removeAttribute("inputmode");
-            }
+            if (dom) targets.push(dom);
         });
+        // **差し替えホスト（縦書きビュー等）は CM6 ではないので leaf からは辿れない。**
+        // ホスト自身に編集要素を名乗ってもらう（ime.setHost の contentEl）。
+        // 無いと、そのビューでだけ OS のキーボードが出る（iPad で実機報告）
+        const hostEl = this.ime?.host?.contentEl;
+        if (hostEl) targets.push(hostEl);
+
+        for (const dom of targets) {
+            if (!dom.hasAttribute("data-hechima-inputmode")) {
+                dom.setAttribute("data-hechima-inputmode", dom.getAttribute("inputmode") ?? "");
+            }
+            dom.setAttribute("inputmode", "none");
+            this.inputModeApplied.push(dom);
+        }
     }
 
     renderStatus() {
@@ -8482,6 +8595,12 @@ class HechimaSettingTab extends PluginSettingTab {
                 d.onChange(async (side) => void this.plugin.flick.setSide(side));
             });
 
+        // --- その他 ---
+        //
+        // **見出しを立てる。** 直前が「フリックキーボード」の 3 項目なので、続けて置くと
+        // ユーザー辞書までフリックの設定に見える（実機の指摘）
+        containerEl.createEl("h4", { text: "その他" });
+
         // **置き場所を出す。** vault の中にあるファイルなので、直接見たり退避したりできる
         // ことが分かるべき（iPad で実機報告）
         const learnDir = this.plugin.engine.learningDir();
@@ -8532,4 +8651,5 @@ module.exports.__vendor = {
     HechimaModule: typeof HechimaModule === "function" ? HechimaModule : undefined,
     KeymapEngine: typeof KeymapEngine === "undefined" ? undefined : KeymapEngine,
     Hechima: typeof Hechima === "undefined" ? undefined : Hechima,
+    FlickEngine: typeof FlickEngine === "undefined" ? undefined : FlickEngine,
 };
