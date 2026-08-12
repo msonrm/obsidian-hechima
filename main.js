@@ -5020,7 +5020,6 @@ var FlickEngine = (function () {
 		function onMove(e) {
 			if (!press || e.pointerId !== press.pointerId) return;
 			const g = classifyGesture(e.clientX - press.startX, e.clientY - press.startY, press.cellW, map.threshold);
-			if (g.kind === "flick" && !press.petal && Object.keys(press.key.flick).length > 0) showPetal();
 			highlightPetal(g.kind === "flick" ? g.dir : null);
 			if (g.kind === "flick" && press.repeatTimer !== null && !press.repeatFired) {
 				clearTimeout(press.repeatTimer);
@@ -5092,7 +5091,7 @@ var FlickEngine = (function () {
 	}
 	//#endregion
 	//#region src/flick/version.ts
-	const FLICK_ENGINE_VERSION = "1.2.0";
+	const FLICK_ENGINE_VERSION = "1.3.0";
 	//#endregion
 	exports.DEFAULT_POST_MODIFY_CYCLES = DEFAULT_POST_MODIFY_CYCLES;
 	exports.classifyGesture = classifyGesture;
