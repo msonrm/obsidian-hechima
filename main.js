@@ -6868,12 +6868,22 @@ body.hechima-flick-on {
   --fe-petal-hot-bg: var(--interactive-accent);
 }
 
-/* 本文を押しやる。★**.app-container ごと縮める。**
-   Obsidian の下部ツールバーもこの中にあるので、一緒に上へ逃げてくれる ——
-   .workspace だけ縮めるとツールバーがパネルの下敷きになり、「隙間からちょっと見えるが
-   押せない」状態になった（実機の指摘）。パネルの側でツールバーの高さを測って避ける手も
-   試したが、隙間が空くだけで**使えるようにはならなかった**ので、押し上げる側に倒した */
-body.hechima-flick-on .app-container { padding-bottom: var(--hechima-flick-h); }
+/* 本文を押しやる。**被せたままだとキャレットがキーボードの下に隠れる**ので、
+   ワークスペース側を縮めてスクロール可能域に入れる */
+body.hechima-flick-on .workspace { padding-bottom: var(--hechima-flick-h); }
+
+/* Obsidian の下部ツールバーを、パネルの上へ逃がす。
+   ★**ここは 3 回やり方を変えている**（実機で 3 回とも駄目だった記録）:
+     0.15.0  何もしない            → ツールバーがパネルの下敷き
+     0.16.0  高さを測って上に置く   → 隙間が空くだけで押せないまま（「前のほうがまし」）
+     0.17.0  .app-container を縮める → やはり隠れたまま。**コンテナの padding では動かない**
+   position に関係なく効くのは transform なので、それで持ち上げる。
+   クラス名は版で変わりうるので 2 つ書く（見つからなければ何も起きないだけ）。
+   横持ちはパネルが片側なので触らない。 */
+body.hechima-flick-on .mobile-toolbar,
+body.hechima-flick-on .mobile-navbar {
+  transform: translateY(calc(-1 * var(--hechima-flick-h)));
+}
 
 /* 候補バー。**高さを常時確保する**（候補の出入りでキーボードが上下にズレない） */
 .hechima-flick-bar {
@@ -6912,8 +6922,16 @@ body.hechima-flick-on .app-container { padding-bottom: var(--hechima-flick-h); }
 /* キーボード面。縦持ちでは残りを全部使う */
 .hechima-flick-area { flex: 1 1 auto; min-height: 0; }
 
-/* 操作ボタン（左右の入替 / 閉じる）。小さく、しかし指で押せる大きさ */
-.hechima-flick-ctl { flex: 0 0 auto; display: flex; gap: 6px; justify-content: flex-end; }
+/* 操作ボタン（左右の入替 / 閉じる）。小さく、しかし指で押せる大きさ。
+   **キー面から離す** —— 直下にあると最下段を打つ指が引っかかる（実機の指摘）ので、
+   間に余白を置き、横持ちではパネルの下端（右下の隅）まで落とす */
+.hechima-flick-ctl {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
 .hechima-flick-ctl button {
   padding: 2px 10px;
   font-size: var(--font-ui-smaller, 12px);
@@ -6943,11 +6961,17 @@ body.hechima-flick-on .app-container { padding-bottom: var(--hechima-flick-h); }
      **候補バーが画面最上部（タイトルバーのあたり）に取り残される** ——
      候補は打っている指の近く、つまりキーボードのすぐ上に要る（実機の指摘） */
   .hechima-flick-bar { margin-top: auto; }
-  .hechima-flick-ctl { margin-bottom: auto; }
+  /* ★余白は**キー面の下**に置く。ctl 側に置くと操作ボタンが塊の一部として中央に来て、
+     キーボードの直下に張り付く（誤爆する）。こうすると bar + キー面が中央、
+     操作ボタンはパネルの右下の隅に残る */
+  .hechima-flick-area { margin-bottom: auto; }
 
-  body.hechima-flick-on .app-container { padding-bottom: 0; }
-  body.hechima-flick-on.hechima-flick-right .app-container { padding-right: var(--hechima-flick-w); }
-  body.hechima-flick-on.hechima-flick-left .app-container { padding-left: var(--hechima-flick-w); }
+  body.hechima-flick-on .workspace { padding-bottom: 0; }
+  body.hechima-flick-on.hechima-flick-right .workspace { padding-right: var(--hechima-flick-w); }
+  body.hechima-flick-on.hechima-flick-left .workspace { padding-left: var(--hechima-flick-w); }
+  /* 横持ちではツールバーは隠れない（パネルは片側だけ） */
+  body.hechima-flick-on .mobile-toolbar,
+  body.hechima-flick-on .mobile-navbar { transform: none; }
 }
 
 /* 左右の入替は横持ちでしか意味がない */
@@ -7610,6 +7634,9 @@ module.exports = class HechimaProbePlugin extends Plugin {
                         `配列エンジン   ${v.KeymapEngine?.version ? `v${v.KeymapEngine.version}` : "見つからない"}`,
                         `セッション層   ${v.Hechima?.version ? `v${v.Hechima.version}` : "見つからない"}`,
                         `フリック       ${v.FlickEngine?.version ? `v${v.FlickEngine.version}` : "見つからない"}`,
+                        // **クラス名に賭けている箇所**（フリック中にツールバーを持ち上げる）。
+                        // 版で変わると黙って効かなくなるので、検出できているかをここに出す
+                        `ツールバー     ${document.querySelector(".mobile-toolbar, .mobile-navbar") ? "検出" : "見つからない（モバイル以外なら正常）"}`,
                         `CodeMirror     ${cmView && cmState ? "OK" : `取得できない: ${cmLoadError ?? "不明"}`}`,
                     ].join("\n")
                 ).open();
