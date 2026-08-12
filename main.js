@@ -4615,7 +4615,7 @@ var FlickEngine = (function () {
 		ownKeys(grid, ["rows", "cols"], `${where}.grid`);
 		const rows = optInt(grid, "rows", 1, `${where}.grid`);
 		const cols = optInt(grid, "cols", 1, `${where}.grid`);
-		if (rows === void 0 || cols === void 0 || rows > 8 || cols > 8) fail(`${where}.grid は rows/cols 1〜8 であるべき`);
+		if (rows === void 0 || cols === void 0 || rows > 12 || cols > 24) fail(`${where}.grid は rows 1〜12 / cols 1〜24 であるべき`);
 		const output = optStr(raw, "output", where) ?? mapOutput;
 		if (output !== "kana" && output !== "romaji" && output !== "direct") fail(`${where}.output "${output}" は未知（kana / romaji / direct）`);
 		if (!Array.isArray(raw.keys) || raw.keys.length === 0) fail(`${where}.keys が空`);
@@ -5091,7 +5091,7 @@ var FlickEngine = (function () {
 	}
 	//#endregion
 	//#region src/flick/version.ts
-	const FLICK_ENGINE_VERSION = "1.3.0";
+	const FLICK_ENGINE_VERSION = "1.4.0";
 	//#endregion
 	exports.DEFAULT_POST_MODIFY_CYCLES = DEFAULT_POST_MODIFY_CYCLES;
 	exports.classifyGesture = classifyGesture;
@@ -5112,9 +5112,9 @@ var FlickEngine = (function () {
 const BUNDLED_KEYMAPS = {"azik":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"AZIK","description":"AZIK 拡張ローマ字入力","author":"木村清","targetScript":"hiragana","inputMappings":{"_comment_special":"単打特殊キー","q":"ん",";":"っ","-":"ー",":":"ー","~":"〜",".":"。",",":"、","/":"・","[":"「","]":"」","_comment_z_symbols":"z + 記号","z/":"・","z.":"…","z,":"‥","z-":"〜","z[":"『","z]":"』","_comment_aliases":"AZIK 拗音別名（g = y ショートカット）","kga":"きゃ","kgu":"きゅ","kge":"きぇ","kgo":"きょ","xa":"しゃ","xu":"しゅ","xe":"しぇ","xo":"しょ","ca":"ちゃ","cu":"ちゅ","ce":"ちぇ","co":"ちょ","nga":"にゃ","ngu":"にゅ","nge":"にぇ","ngo":"にょ","hga":"ひゃ","hgu":"ひゅ","hge":"ひぇ","hgo":"ひょ","mga":"みゃ","mgu":"みゅ","mge":"みぇ","mgo":"みょ","pga":"ぴゃ","pgu":"ぴゅ","pge":"ぴぇ","pgo":"ぴょ","_comment_shortcuts_f":"子音 + f ショートカット","kf":"き","jf":"じゅ","hf":"ふ","yf":"ゆ","mf":"む","nf":"ぬ","df":"で","cf":"ちぇ","pf":"ぽん","wf":"わい","sf":"さい","_comment_shortcuts_double":"子音連打ショートカット","ss":"せい","rr":"られ","tt":"たち","_comment_shortcuts_z":"z + 子音ショートカット","zc":"ざ","zv":"ざい","zf":"ぜ","zx":"ぜい","zr":"ざる","_comment_shortcuts_word":"単語ショートカット","kt":"こと","wt":"わた","km":"かも","sr":"する","nb":"ねば","nt":"にち","st":"した","mn":"もの","tm":"ため","tr":"たら","bt":"びと","dt":"だち","ms":"ます","dm":"でも","nr":"なる","mt":"また","gr":"がら","wr":"われ","ht":"ひと","ds":"です","kr":"から","yr":"よる","tb":"たび","gt":"ごと","_comment_azik_foreign":"AZIK 固有の外来音ショートカット","tgi":"てぃ","tgu":"とぅ","dci":"でぃ","dcu":"どぅ","wso":"うぉ","_comment_irregular_suffix":"不規則なサフィックス（suffix 展開と異なる出力）","fp":"ふぉー","vp":"ヴぉー","vh":"ヴー","tgh":"とぅー","dch":"どぅー","wp":"うぉー","wl":"うぉん"},"inputBase":"romaji","suffixRules":{"z":{"vowel":"a","suffix":"ん"},"n":{"vowel":"a","suffix":"ん"},"k":{"vowel":"i","suffix":"ん"},"j":{"vowel":"u","suffix":"ん"},"d":{"vowel":"e","suffix":"ん"},"l":{"vowel":"o","suffix":"ん"},"q":{"vowel":"a","suffix":"い"},"h":{"vowel":"u","suffix":"う"},"w":{"vowel":"e","suffix":"い"},"p":{"vowel":"o","suffix":"う"}},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"naginata":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"薙刀式","description":"薙刀式v18同時打鍵入力","author":"大岡俊彦","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"W":"き","E":"て","R":"し","I":"る","O":"す","P":"へ","A":"ろ","S":"け","D":"と","F":"か","G":"っ","H":"く","J":"あ","K":"い","L":"う","semicolon":"ー","Z":"ほ","X":"ひ","C":"は","V":"こ","B":"そ","N":"た","M":"な","comma":"ん","dot":"ら","slash":"れ","holder1+E":"り","holder1+R":"め","holder1+W":"ね","holder1+I":"よ","holder1+O":"え","holder1+P":"ゆ","holder1+U":"さ","holder1+A":"せ","holder1+D":"に","holder1+F":"ま","holder1+G":"ち","holder1+H":"や","holder1+J":"の","holder1+K":"も","holder1+L":"つ","holder1+S":"み","holder1+semicolon":"ふ","holder1+B":"ぬ","holder1+C":"を","holder1+N":"お","holder1+X":"ひ","holder1+Z":"ほ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"れ","A+J":"ぜ","B+J":"ぞ","C+J":"ば","C+M":"ぱ","D+H":"にゃ","D+I":"にょ","D+J":"ど","D+P":"にゅ","D+J+L":"どぅ","D+L+M":"とぅ","E+H":"りゃ","E+I":"りょ","E+J":"で","E+P":"りゅ","E+J+K":"でぃ","E+J+P":"でゅ","E+K+M":"てぃ","E+M+P":"てゅ","F+H":"ぐ","F+J":"が","F+L":"づ","F+N":"だ","F+O":"ず","F+P":"べ","F+Q":"ヵ","F+U":"ざ","F+semicolon":"ぶ","F+H+J":"ぐぁ","F+H+K":"ぐぃ","F+H+N":"ぐぉ","F+H+O":"ぐぇ","F+H+dot":"ぐゎ","F+J+L":"ゔぁ","F+K+L":"ゔぃ","F+L+N":"ゔぉ","F+L+O":"ゔぇ","F+L+P":"ゔゅ","F+L+semicolon":"ゔ","G+H":"ちゃ","G+I":"ちょ","G+J":"ぢ","G+P":"ちゅ","G+H+J":"ぢゃ","G+I+J":"ぢょ","G+J+O":"ぢぇ","G+J+P":"ぢゅ","G+M+O":"ちぇ","H+Q":"ゃ","H+R":"しゃ","H+S":"みゃ","H+W":"きゃ","H+X":"ひゃ","H+J+R":"じゃ","H+J+V":"くぁ","H+J+W":"ぎゃ","H+J+X":"びゃ","H+K+V":"くぃ","H+M+X":"ぴゃ","H+N+V":"くぉ","H+O+V":"くぇ","H+V+dot":"くゎ","I+Q":"ょ","I+R":"しょ","I+S":"みょ","I+W":"きょ","I+X":"ひょ","I+J+R":"じょ","I+J+W":"ぎょ","I+J+X":"びょ","I+M+X":"ぴょ","J+Q":"ぁ","J+R":"じ","J+S":"げ","J+V":"ご","J+W":"ぎ","J+X":"び","J+Z":"ぼ","J+L+V":"つぁ","J+O+R":"じぇ","J+P+R":"じゅ","J+P+W":"ぎゅ","J+P+X":"びゅ","J+V+semicolon":"ふぁ","K+Q":"ぃ","K+L+V":"うぃ","K+O+V":"いぇ","K+V+semicolon":"ふぃ","L+Q":"ぅ","L+N+V":"うぉ","L+O+V":"うぇ","M+X":"ぴ","M+Z":"ぽ","M+O+R":"しぇ","M+P+X":"ぴゅ","N+Q":"ぉ","N+V+semicolon":"ふぉ","O+Q":"ぇ","O+V+semicolon":"ふぇ","P+Q":"ゅ","P+R":"しゅ","P+S":"みゅ","P+V":"ぺ","P+W":"きゅ","P+X":"ひゅ","P+V+semicolon":"ふゅ","Q+S":"ヶ","Q+dot":"ゎ","V+semicolon":"ぷ"},"specialActions":{"T":"moveLeft","U":"deleteBack","Y":"moveRight","F+G":"switchToEnglish","M+V":"confirm","holder1+M":"insertAndConfirm:。","holder1+T":"editSegmentLeft","holder1+V":"insertAndConfirm:、","holder1+Y":"editSegmentRight"},"judgment":"mutual","englishLookupTable":{"Q":"q","W":"w","E":"e","R":"r","T":"t","Y":"y","U":"u","I":"i","O":"o","P":"p","A":"a","S":"s","D":"d","F":"f","G":"g","H":"h","J":"j","K":"k","L":"l","semicolon":";","Z":"z","X":"x","C":"c","V":"v","B":"b","N":"n","M":"m","comma":",","dot":".","slash":"/","space+Q":"Q","space+W":"W","space+E":"E","space+R":"R","space+S":"S","space+T":"T","space+Y":"Y","space+U":"U","space+I":"I","space+O":"O","space+P":"P","space+A":"A","space+D":"D","space+F":"F","space+G":"G","space+H":"H","space+J":"J","space+K":"K","space+L":"L","space+Z":"Z","space+X":"X","space+C":"C","space+V":"V","space+B":"B","space+N":"N","space+M":"M","space+comma":"<","space+dot":">","space+semicolon":":","space+slash":"?"},"englishSpecialActions":{"H+J":"switchToJapanese"}}},"requires":["judgment:mutual","roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"nicola":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"NICOLA","description":"NICOLA 親指シフト入力","author":"日本語入力コンソーシアム","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["lang2","international5"]},"holder2":{"label":"右親指","keys":["lang1","international4"]}},"layouts":{"us":{"holder1":["space"],"holder2":["rightAlt"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","semicolon":"ん","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"ぱ","holder1+U":"ぢ","holder1+I":"ぐ","holder1+O":"づ","holder1+P":"ぴ","_comment_semicolon":"NICOLA 規格書 図1: ; の交差シフト面は割り当て無し（セルは 2 文字）","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"ば","holder1+J":"ど","holder1+K":"ぎ","holder1+L":"ぽ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぷ","holder1+M":"ぞ","holder1+comma":"ぺ","holder1+dot":"ぼ","holder1+slash":"ぉ","holder2+Q":"ぁ","holder2+W":"が","holder2+E":"だ","holder2+R":"ご","holder2+T":"ざ","holder2+Y":"よ","holder2+U":"に","holder2+I":"る","holder2+O":"ま","holder2+P":"ぇ","holder2+semicolon":"っ","holder2+A":"ゔ","holder2+S":"じ","holder2+D":"で","holder2+F":"げ","holder2+G":"ぜ","holder2+H":"み","holder2+J":"お","holder2+K":"の","holder2+L":"ょ","holder2+Z":"ぅ","holder2+X":"び","holder2+C":"ず","holder2+V":"ぶ","holder2+B":"べ","holder2+N":"ぬ","holder2+M":"ゆ","holder2+comma":"む","holder2+dot":"わ","holder2+slash":"ぉ"},"specialActions":{},"judgment":"window","simultaneousWindow":0.1}},"requires":["roles"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish"}},"oyayubi_pyun_1key":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"親指ぴゅん 1キー版","description":"親指シフトキーボードエミュレータ「親指ぴゅん」（遠藤諭 / Hortense S. Endoh）の DOS/V 版 OKPV.ASM v0.80（1992）の -p（ＡＴキーボード）モードに倣った配列。親指ぴゅん自体は 1989 年の OKPJ.asm v0.69 まで遡る。AT/101 には無変換キーが無いため、親指シフトはスペース 1 本の単独シフトになり、交差シフトの濁音は無効化される。濁音・半濁音は L 字エンター左のキー（スキャンコード 0x1b）で後付けする。","author":"遠藤諭（Hortense S. Endoh）","basedOn":"NICOLA","addedAt":"2026-08-01","targetScript":"hiragana","roles":{"holder1":{"label":"左親指 / センターシフト","keys":["space"]}},"behavior":{"type":"chord","config":{"hidToKey":{"q":"Q","w":"W","e":"E","r":"R","t":"T","y":"Y","u":"U","i":"I","o":"O","p":"P","a":"A","s":"S","d":"D","f":"F","g":"G","h":"H","j":"J","k":"K","l":"L","semicolon":"semicolon","z":"Z","x":"X","c":"C","v":"V","b":"B","n":"N","m":"M","comma":"comma","period":"dot","slash":"slash"},"lookupTable":{"_comment_single":"単打（kanatbl）","Q":"。","W":"か","E":"た","R":"こ","T":"さ","Y":"ら","U":"ち","I":"く","O":"つ","P":"、","A":"う","S":"し","D":"て","F":"け","G":"せ","H":"は","J":"と","K":"き","L":"い","semicolon":"ん","Z":"．","X":"ひ","C":"す","V":"ふ","B":"へ","N":"め","M":"そ","comma":"ね","dot":"ほ","slash":"・","_comment_shift":"スペース同時押し（kanasfttbl）。-p では交差シフトの濁音が無効化され、親指シフトは常にシフト面","holder1+Q":"ぁ","holder1+W":"え","holder1+E":"り","holder1+R":"ゃ","holder1+T":"れ","holder1+Y":"よ","holder1+U":"に","holder1+I":"る","holder1+O":"ま","holder1+P":"ぇ","holder1+A":"を","holder1+S":"あ","holder1+D":"な","holder1+F":"ゅ","holder1+G":"も","holder1+H":"み","holder1+J":"お","holder1+K":"の","holder1+L":"ょ","holder1+semicolon":"っ","holder1+Z":"ぅ","holder1+X":"ー","holder1+C":"ろ","holder1+V":"や","holder1+B":"ぃ","holder1+N":"ぬ","holder1+M":"ゆ","holder1+comma":"む","holder1+dot":"わ","holder1+slash":"ぉ"},"specialActions":{},"judgment":"mutual"}},"requires":["judgment:mutual","roles","postModify","actionGuard"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","bracketRight":{"action":"postModify:dakuten","when":["composing"]},"shift+bracketRight":{"action":"postModify:handakuten","when":["composing"]},"lang1":"switchToJapanese","lang2":"switchToEnglish"}},"romaji":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（QWERTY）","description":"標準ローマ字入力","targetScript":"hiragana","inputBase":"romaji","behavior":{"type":"sequential","characterMap":{}},"modeKeys":{"ctrl+space":"toggleInputMode","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"romaji_colemak":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"ローマ字（Colemak）","description":"Colemak 配列でのローマ字入力。OS 側のキーボードレイアウトは QWERTY のまま、アプリ内で QWERTY→Colemak のキーリマップを行う。OS 側を Colemak に設定している場合は QWERTY に戻してください（二重に変換されるため）。","author":"Shai Coleman","license":"Unlicense","targetScript":"hiragana","inputMappings":{"_comment_punctuation":"句読点・記号",",":"、",".":"。","/":"・","-":"ー","[":"「","]":"」"},"inputBase":"romaji","keyRemap":{"_comment_top":"上段: QWERTY→Colemak","e":"f","r":"p","t":"g","y":"j","u":"l","i":"u","o":"y","p":";","_comment_middle":"中段: QWERTY→Colemak","s":"r","d":"s","f":"t","g":"d","j":"n","k":"e","l":"i",";":"o","_comment_bottom":"下段: QWERTY→Colemak","n":"k"},"prefixShiftKeys":[],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９",";":"；","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","^":"＾","_":"＿","\"":"”","'":"’","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","~":"〜","¥":"￥"}},"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}},"tsuki2-263":{"$schema":"../../../docs/keymap-v2.schema.json","formatVersion":"2.0","name":"月配列2-263","description":"月配列2-263 前置シフト方式","targetScript":"hiragana","base":"positional","inputMappings":{"_comment_base_top":"単打（上段）","q":"そ","w":"こ","e":"し","r":"て","t":"ょ","y":"つ","u":"ん","i":"い","o":"の","p":"り","_comment_base_middle":"単打（中段）","a":"は","s":"か","[":"ち","f":"と","g":"た","h":"く","j":"う","'":"れ",";":"き","_comment_base_bottom":"単打（下段）","z":"す","x":"け","c":"に","v":"な","b":"さ","n":"っ","m":"る",",":"、",".":"。","l":"゛","/":"゜","_comment_d_prefix":"d 前置シフト","dq":"ぁ","dw":"ひ","de":"ほ","dr":"ふ","dt":"め","dy":"ぬ","du":"え","di":"み","do":"や","dp":"ぇ","da":"ぃ","ds":"を","dd":"ら","df":"あ","dg":"よ","dh":"ま","dj":"お","dk":"も","dl":"わ","d;":"ゆ","dz":"ぅ","dx":"へ","dc":"せ","dv":"ゅ","db":"ゃ","dn":"む","dm":"ろ","d,":"ね","d.":"ー","d/":"ぉ","d[":"「","d'":"」","_comment_k_prefix":"k 前置シフト","kq":"ぁ","kw":"ひ","ke":"ほ","kr":"ふ","kt":"め","ky":"ぬ","ku":"え","ki":"み","ko":"や","kp":"ぇ","ka":"ぃ","ks":"を","kd":"ら","kf":"あ","kg":"よ","kh":"ま","kj":"お","kk":"も","kl":"わ","k;":"ゆ","kz":"ぅ","kx":"へ","kc":"せ","kv":"ゅ","kb":"ゃ","kn":"む","km":"ろ","k,":"ね","k.":"ー","k/":"ぉ","k[":"「","k'":"」","_comment_voiced":"後置濁音（l 後置）","sl":"が",";l":"ぎ","hl":"ぐ","xl":"げ","wl":"ご","bl":"ざ","el":"じ","zl":"ず","ql":"ぞ","gl":"だ","yl":"づ","rl":"で","fl":"ど","al":"ば","[l":"ぢ","jl":"ゔ","_comment_voiced_shifted":"前置シフト + 後置濁音","dwl":"び","drl":"ぶ","dxl":"べ","del":"ぼ","dcl":"ぜ","kwl":"び","krl":"ぶ","kxl":"べ","kel":"ぼ","kcl":"ぜ","_comment_semi_voiced":"半濁音（/ 後置）","a/":"ぱ","dw/":"ぴ","dr/":"ぷ","dx/":"ぺ","de/":"ぽ","kw/":"ぴ","kr/":"ぷ","kx/":"ぺ","ke/":"ぽ"},"prefixShiftKeys":["d","k"],"behavior":{"type":"sequential","characterMap":{"0":"０","1":"１","2":"２","3":"３","4":"４","5":"５","6":"６","7":"７","8":"８","9":"９","]":"」","{":"『","}":"』","(":"（",")":"）","<":"＜",">":"＞","-":"ー","~":"〜","^":"＾","_":"＿","\"":"”","`":"｀","+":"＋","=":"＝","*":"＊","!":"！","?":"？",":":"：","@":"＠","#":"＃","$":"＄","%":"％","&":"＆","|":"｜","\\":"＼","¥":"￥","'":"＇"}},"requires":["positionalBase"],"modeKeys":{"ctrl+space":"toggleInputMode","ctrl+shift+j":"switchToJapanese","ctrl+shift+semicolon":"switchToEnglish","lang2":"switchToEnglish","lang1":"switchToJapanese"}}};
 
 
-// ==== bundled flickmaps (1) ====
+// ==== bundled flickmaps (2) ====
 // 自動生成: web/public/flickmaps/*.json を埋め込んだもの。編集しないこと。
-const BUNDLED_FLICKMAPS = {"flick_standard":{"formatVersion":"flick-1","name":"12キー標準フリック","description":"iOS / Android 標準相当の12キーフリック入力（かな・英字・数字の3レイヤ）","output":"kana","flickConfig":{"inputStyle":"flick","threshold":0.35,"petalDelayMs":350,"repeat":{"delayMs":500,"intervalMs":80}},"initialLayer":"kana","_comment_layout":"左端列 = 戻す / ←(↑↓フリック) / 英数トグル / ひらがな。右端列 = ⌫ / →(↑↓フリック) / 空白(合成中=変換) / 改行(合成中=確定)。英数トグルのスロットはレイヤごとに切替先が変わる（かな→英字、英字→数字、数字→英字）","layers":{"kana":{"grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"英数","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"あ","flick":{"left":"い","up":"う","right":"え","down":"お"}},{"row":0,"col":2,"tap":"か","flick":{"left":"き","up":"く","right":"け","down":"こ"}},{"row":0,"col":3,"tap":"さ","flick":{"left":"し","up":"す","right":"せ","down":"そ"}},{"row":1,"col":1,"tap":"た","flick":{"left":"ち","up":"つ","right":"て","down":"と"}},{"row":1,"col":2,"tap":"な","flick":{"left":"に","up":"ぬ","right":"ね","down":"の"}},{"row":1,"col":3,"tap":"は","flick":{"left":"ひ","up":"ふ","right":"へ","down":"ほ"}},{"row":2,"col":1,"tap":"ま","flick":{"left":"み","up":"む","right":"め","down":"も"}},{"row":2,"col":2,"tap":"や","flick":{"left":"「","up":"ゆ","right":"」","down":"よ"}},{"row":2,"col":3,"tap":"ら","flick":{"left":"り","up":"る","right":"れ","down":"ろ"}},{"row":3,"col":1,"label":"゛゜小","tap":{"action":"postModify"}},{"row":3,"col":2,"tap":"わ","flick":{"left":"を","up":"ん","right":"ー"}},{"row":3,"col":3,"tap":"、","flick":{"left":"。","up":"？","right":"！","down":"…"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"eiji":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"☆123","tap":{"action":"setLayer","layer":"digit"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"label":"@#/&","tap":"@","flick":{"left":"#","up":"/","right":"&"}},{"row":0,"col":2,"label":"abc","tap":"a","flick":{"left":"b","up":"c"}},{"row":0,"col":3,"label":"def","tap":"d","flick":{"left":"e","up":"f"}},{"row":1,"col":1,"label":"ghi","tap":"g","flick":{"left":"h","up":"i"}},{"row":1,"col":2,"label":"jkl","tap":"j","flick":{"left":"k","up":"l"}},{"row":1,"col":3,"label":"mno","tap":"m","flick":{"left":"n","up":"o"}},{"row":2,"col":1,"label":"pqrs","tap":"p","flick":{"left":"q","up":"r","right":"s"}},{"row":2,"col":2,"label":"tuv","tap":"t","flick":{"left":"u","up":"v"}},{"row":2,"col":3,"label":"wxyz","tap":"w","flick":{"left":"x","up":"y","right":"z"}},{"row":3,"col":1,"label":"'\"()","tap":"'","flick":{"left":"\"","up":"(","right":")"}},{"row":3,"col":2,"label":".,?!","tap":".","flick":{"left":",","up":"?","right":"!"}},{"row":3,"col":3,"label":"-_/:","tap":"-","flick":{"left":"_","up":"/","right":":"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"digit":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"ABC","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"1"},{"row":0,"col":2,"tap":"2"},{"row":0,"col":3,"tap":"3"},{"row":1,"col":1,"tap":"4"},{"row":1,"col":2,"tap":"5"},{"row":1,"col":3,"tap":"6"},{"row":2,"col":1,"tap":"7"},{"row":2,"col":2,"tap":"8"},{"row":2,"col":3,"tap":"9"},{"row":3,"col":1,"label":"()[]","tap":"(","flick":{"left":")","up":"[","right":"]"}},{"row":3,"col":2,"tap":"0"},{"row":3,"col":3,"label":".,-/","tap":".","flick":{"left":",","up":"-","right":"/"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]}}}};
+const BUNDLED_FLICKMAPS = {"flick_standard":{"formatVersion":"flick-1","name":"12キー標準フリック","description":"iOS / Android 標準相当の12キーフリック入力（かな・英字・数字の3レイヤ）","output":"kana","flickConfig":{"inputStyle":"flick","threshold":0.35,"petalDelayMs":350,"repeat":{"delayMs":500,"intervalMs":80}},"initialLayer":"kana","_comment_layout":"左端列 = 戻す / ←(↑↓フリック) / 英数トグル / ひらがな。右端列 = ⌫ / →(↑↓フリック) / 空白(合成中=変換) / 改行(合成中=確定)。英数トグルのスロットはレイヤごとに切替先が変わる（かな→英字、英字→数字、数字→英字）","layers":{"kana":{"grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"英数","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"あ","flick":{"left":"い","up":"う","right":"え","down":"お"}},{"row":0,"col":2,"tap":"か","flick":{"left":"き","up":"く","right":"け","down":"こ"}},{"row":0,"col":3,"tap":"さ","flick":{"left":"し","up":"す","right":"せ","down":"そ"}},{"row":1,"col":1,"tap":"た","flick":{"left":"ち","up":"つ","right":"て","down":"と"}},{"row":1,"col":2,"tap":"な","flick":{"left":"に","up":"ぬ","right":"ね","down":"の"}},{"row":1,"col":3,"tap":"は","flick":{"left":"ひ","up":"ふ","right":"へ","down":"ほ"}},{"row":2,"col":1,"tap":"ま","flick":{"left":"み","up":"む","right":"め","down":"も"}},{"row":2,"col":2,"tap":"や","flick":{"left":"「","up":"ゆ","right":"」","down":"よ"}},{"row":2,"col":3,"tap":"ら","flick":{"left":"り","up":"る","right":"れ","down":"ろ"}},{"row":3,"col":1,"label":"゛゜小","tap":{"action":"postModify"}},{"row":3,"col":2,"tap":"わ","flick":{"left":"を","up":"ん","right":"ー"}},{"row":3,"col":3,"tap":"、","flick":{"left":"。","up":"？","right":"！","down":"…"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"eiji":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"☆123","tap":{"action":"setLayer","layer":"digit"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"label":"@#/&","tap":"@","flick":{"left":"#","up":"/","right":"&"}},{"row":0,"col":2,"label":"abc","tap":"a","flick":{"left":"b","up":"c"}},{"row":0,"col":3,"label":"def","tap":"d","flick":{"left":"e","up":"f"}},{"row":1,"col":1,"label":"ghi","tap":"g","flick":{"left":"h","up":"i"}},{"row":1,"col":2,"label":"jkl","tap":"j","flick":{"left":"k","up":"l"}},{"row":1,"col":3,"label":"mno","tap":"m","flick":{"left":"n","up":"o"}},{"row":2,"col":1,"label":"pqrs","tap":"p","flick":{"left":"q","up":"r","right":"s"}},{"row":2,"col":2,"label":"tuv","tap":"t","flick":{"left":"u","up":"v"}},{"row":2,"col":3,"label":"wxyz","tap":"w","flick":{"left":"x","up":"y","right":"z"}},{"row":3,"col":1,"label":"'\"()","tap":"'","flick":{"left":"\"","up":"(","right":")"}},{"row":3,"col":2,"label":".,?!","tap":".","flick":{"left":",","up":"?","right":"!"}},{"row":3,"col":3,"label":"-_/:","tap":"-","flick":{"left":"_","up":"/","right":":"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]},"digit":{"output":"direct","grid":{"rows":4,"cols":5},"keys":[{"row":0,"col":0,"label":"戻す","tap":{"action":"undo"}},{"row":1,"col":0,"label":"←","tap":{"action":"moveLeft"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":0,"label":"ABC","tap":{"action":"setLayer","layer":"eiji"}},{"row":3,"col":0,"label":"ひらがな","tap":{"action":"setLayer","layer":"kana"}},{"row":0,"col":1,"tap":"1"},{"row":0,"col":2,"tap":"2"},{"row":0,"col":3,"tap":"3"},{"row":1,"col":1,"tap":"4"},{"row":1,"col":2,"tap":"5"},{"row":1,"col":3,"tap":"6"},{"row":2,"col":1,"tap":"7"},{"row":2,"col":2,"tap":"8"},{"row":2,"col":3,"tap":"9"},{"row":3,"col":1,"label":"()[]","tap":"(","flick":{"left":")","up":"[","right":"]"}},{"row":3,"col":2,"tap":"0"},{"row":3,"col":3,"label":".,-/","tap":".","flick":{"left":",","up":"-","right":"/"}},{"row":0,"col":4,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":1,"col":4,"label":"→","tap":{"action":"moveRight"},"flick":{"up":{"action":"moveUp"},"down":{"action":"moveDown"}}},{"row":2,"col":4,"label":"空白","composingLabel":"変換","tap":{"action":"convert"}},{"row":3,"col":4,"label":"改行","composingLabel":"確定","tap":{"action":"confirm"}}]}}},"qwerty_en":{"formatVersion":"flick-1","name":"QWERTY（英字）","description":"タッチ用の QWERTY。英数字を**セッションを経由せず直接**入力する（かなにはしない）。フリック面と並べて置き、英単語・URL・コード片のような「かなを通さないもの」を打つための面。**格子配置**（物理キーボードのような行ごとのずれは付けない —— タッチでは指の位置を覚えるだけで、ずれを模す理由が無い）。","output":"kana","flickConfig":{"inputStyle":"flick","threshold":0.5,"petalDelayMs":0,"repeat":{"delayMs":500,"intervalMs":80}},"initialLayer":"lower","_comment_layout":"10 列 × 4 行の格子。a 行は右端に ' を置いて 10 キーで埋める（英語で頻出）。フリックは持たない（誤爆のもとで、英字にフリックの意味が無い）","layers":{"lower":{"output":"direct","grid":{"rows":4,"cols":10},"keys":[{"row":0,"col":0,"tap":"q"},{"row":0,"col":1,"tap":"w"},{"row":0,"col":2,"tap":"e"},{"row":0,"col":3,"tap":"r"},{"row":0,"col":4,"tap":"t"},{"row":0,"col":5,"tap":"y"},{"row":0,"col":6,"tap":"u"},{"row":0,"col":7,"tap":"i"},{"row":0,"col":8,"tap":"o"},{"row":0,"col":9,"tap":"p"},{"row":1,"col":0,"tap":"a"},{"row":1,"col":1,"tap":"s"},{"row":1,"col":2,"tap":"d"},{"row":1,"col":3,"tap":"f"},{"row":1,"col":4,"tap":"g"},{"row":1,"col":5,"tap":"h"},{"row":1,"col":6,"tap":"j"},{"row":1,"col":7,"tap":"k"},{"row":1,"col":8,"tap":"l"},{"row":1,"col":9,"tap":"'"},{"row":2,"col":0,"label":"⇧","tap":{"action":"setLayer","layer":"upper"}},{"row":2,"col":1,"tap":"z"},{"row":2,"col":2,"tap":"x"},{"row":2,"col":3,"tap":"c"},{"row":2,"col":4,"tap":"v"},{"row":2,"col":5,"tap":"b"},{"row":2,"col":6,"tap":"n"},{"row":2,"col":7,"tap":"m"},{"row":2,"col":8,"colSpan":2,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":3,"col":0,"colSpan":2,"label":"123","tap":{"action":"setLayer","layer":"digit"}},{"row":3,"col":2,"tap":","},{"row":3,"col":3,"colSpan":4,"label":"space","tap":" "},{"row":3,"col":7,"tap":"."},{"row":3,"col":8,"colSpan":2,"label":"⏎","tap":{"action":"confirm"}}]},"upper":{"output":"direct","grid":{"rows":4,"cols":10},"keys":[{"row":0,"col":0,"tap":"Q"},{"row":0,"col":1,"tap":"W"},{"row":0,"col":2,"tap":"E"},{"row":0,"col":3,"tap":"R"},{"row":0,"col":4,"tap":"T"},{"row":0,"col":5,"tap":"Y"},{"row":0,"col":6,"tap":"U"},{"row":0,"col":7,"tap":"I"},{"row":0,"col":8,"tap":"O"},{"row":0,"col":9,"tap":"P"},{"row":1,"col":0,"tap":"A"},{"row":1,"col":1,"tap":"S"},{"row":1,"col":2,"tap":"D"},{"row":1,"col":3,"tap":"F"},{"row":1,"col":4,"tap":"G"},{"row":1,"col":5,"tap":"H"},{"row":1,"col":6,"tap":"J"},{"row":1,"col":7,"tap":"K"},{"row":1,"col":8,"tap":"L"},{"row":1,"col":9,"tap":"'"},{"row":2,"col":0,"label":"⇧","tap":{"action":"setLayer","layer":"lower"}},{"row":2,"col":1,"tap":"Z"},{"row":2,"col":2,"tap":"X"},{"row":2,"col":3,"tap":"C"},{"row":2,"col":4,"tap":"V"},{"row":2,"col":5,"tap":"B"},{"row":2,"col":6,"tap":"N"},{"row":2,"col":7,"tap":"M"},{"row":2,"col":8,"colSpan":2,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":3,"col":0,"colSpan":2,"label":"123","tap":{"action":"setLayer","layer":"digit"}},{"row":3,"col":2,"tap":","},{"row":3,"col":3,"colSpan":4,"label":"space","tap":" "},{"row":3,"col":7,"tap":"."},{"row":3,"col":8,"colSpan":2,"label":"⏎","tap":{"action":"confirm"}}]},"digit":{"output":"direct","grid":{"rows":4,"cols":10},"keys":[{"row":0,"col":0,"tap":"1"},{"row":0,"col":1,"tap":"2"},{"row":0,"col":2,"tap":"3"},{"row":0,"col":3,"tap":"4"},{"row":0,"col":4,"tap":"5"},{"row":0,"col":5,"tap":"6"},{"row":0,"col":6,"tap":"7"},{"row":0,"col":7,"tap":"8"},{"row":0,"col":8,"tap":"9"},{"row":0,"col":9,"tap":"0"},{"row":1,"col":0,"tap":"-"},{"row":1,"col":1,"tap":"/"},{"row":1,"col":2,"tap":":"},{"row":1,"col":3,"tap":";"},{"row":1,"col":4,"tap":"("},{"row":1,"col":5,"tap":")"},{"row":1,"col":6,"tap":"$"},{"row":1,"col":7,"tap":"&"},{"row":1,"col":8,"tap":"@"},{"row":1,"col":9,"tap":"\""},{"row":2,"col":0,"tap":"#"},{"row":2,"col":1,"tap":"+"},{"row":2,"col":2,"tap":"="},{"row":2,"col":3,"tap":"_"},{"row":2,"col":4,"tap":"*"},{"row":2,"col":5,"tap":"?"},{"row":2,"col":6,"tap":"!"},{"row":2,"col":7,"tap":"~"},{"row":2,"col":8,"colSpan":2,"label":"⌫","tap":{"action":"deleteBack"},"repeat":true},{"row":3,"col":0,"colSpan":2,"label":"ABC","tap":{"action":"setLayer","layer":"lower"}},{"row":3,"col":2,"tap":","},{"row":3,"col":3,"colSpan":4,"label":"space","tap":" "},{"row":3,"col":7,"tap":"."},{"row":3,"col":8,"colSpan":2,"label":"⏎","tap":{"action":"confirm"}}]}}}};
 
 
 // ==== src/assets.js ====
@@ -6839,8 +6839,16 @@ class HechimaIME {
         return this.fep.commitFocused();
     }
 
-    /** direct レイヤ（英字・数字）。セッションを経由せず本文へ入れる */
+    /**
+     * direct レイヤ（英字面・数字）。セッションを経由せず本文へ入れる。
+     *
+     * **合成中なら先に確定する。** 直接入力が未確定の**手前**に割り込むと、打った順と
+     * 文書の並びが食い違う（「ねこ」を打ちかけて英字面で "cat" と打つと "catねこ" になる）。
+     * 物理キーボードの印字キーがセッションを通ると「候補を確定してから継続」になるのと
+     * 同じ扱いに揃える。
+     */
     insertText(text) {
+        if (this.isComposing()) this.fep?.feedDirect({ key: "Enter", code: "Enter" });
         this.editor()?.replaceSelection(text);
     }
 
@@ -6917,6 +6925,9 @@ class HechimaIME {
 
 /** 同梱フリックマップの既定 */
 const DEFAULT_FLICKMAP = "flick_standard";
+
+/** 並べて置く英字面（かなを通さない直接入力。英単語・URL・コード片用） */
+const QWERTY_FLICKMAP = "qwerty_en";
 
 const FLICK_STYLES = `
 /* ★**メディアクエリは必ずこのファイルの末尾に置く。**
@@ -7018,8 +7029,21 @@ body.hechima-flick-on .mobile-navbar {
    （selectCandidate は通常候補のみが対象）ので、タップ選択の対象にはしない */
 .hechima-flick-cand.is-additional { color: var(--text-muted); font-style: italic; }
 
-/* キーボード面。縦持ちでは残りを全部使う */
-.hechima-flick-area { flex: 1 1 auto; min-height: 0; }
+/* 2 つの面（かなのフリック / 英字の QWERTY）を包む。
+   **縦持ちは左右に、横持ちは上下に**並べる —— 余っているのは、縦持ちなら幅
+   （iPad で 834px。5 列のフリックには広すぎる）、横持ちなら高さだから。
+   左右の順は「⇄ 左右」ボタンで入れ替わる（data-side を面の順序にも効かせる） */
+.hechima-flick-faces {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+.hechima-flick[data-side="left"] .hechima-flick-faces { flex-direction: row-reverse; }
+/* 幅の配分は列数ほどには開けない（英字は補助なのでキーが小さくてよい） */
+.hechima-flick-area { flex: 4 1 0; min-width: 0; min-height: 0; }
+.hechima-flick-area2 { flex: 6 1 0; min-width: 0; min-height: 0; }
 
 /* 操作ボタン（左右の入替 / 閉じる）。小さく、しかし指で押せる大きさ。
    **キー面から離す** —— 直下にあると最下段を打つ指が引っかかる（実機の指摘）ので、
@@ -7053,9 +7077,14 @@ body.hechima-flick-on .mobile-navbar {
   .hechima-flick[data-side="right"] { left: auto; right: 0; border-left: 1px solid var(--background-modifier-border); }
   .hechima-flick[data-side="left"] { right: auto; left: 0; border-right: 1px solid var(--background-modifier-border); }
 
-  /* キー面は**幅から高さが決まる**（5 列 4 行）。伸ばさない・縮めない ——
-     伸ばすと画面の縦幅を全部占拠する */
+  /* 横持ちは**上下に積む**。左右の入替（data-side）はパネルの位置に効くので、
+     面の順序には効かせない */
+  .hechima-flick-faces { flex-direction: column; }
+  .hechima-flick[data-side="left"] .hechima-flick-faces { flex-direction: column; }
+  /* 各面は**幅から高さが決まる**（かな 5 列 4 行 / 英字 10 列 4 行）。
+     伸ばさない・縮めない —— 伸ばすと画面の縦幅を全部占拠する */
   .hechima-flick-area { flex: 0 0 auto; aspect-ratio: 5 / 4; max-height: 100%; }
+  .hechima-flick-area2 { flex: 0 0 auto; aspect-ratio: 10 / 4; max-height: 100%; }
   /* 候補バー〜操作ボタンの塊を縦中央に置く。★キー面だけを中央にすると、
      **候補バーが画面最上部（タイトルバーのあたり）に取り残される** ——
      候補は打っている指の近く、つまりキーボードのすぐ上に要る（実機の指摘） */
@@ -7063,7 +7092,7 @@ body.hechima-flick-on .mobile-navbar {
   /* ★余白は**キー面の下**に置く。ctl 側に置くと操作ボタンが塊の一部として中央に来て、
      キーボードの直下に張り付く（誤爆する）。こうすると bar + キー面が中央、
      操作ボタンはパネルの右下の隅に残る */
-  .hechima-flick-area { margin-bottom: auto; }
+  .hechima-flick-faces { margin-bottom: auto; }
 
   body.hechima-flick-on .workspace { padding-bottom: 0; }
   body.hechima-flick-on.hechima-flick-right .workspace { padding-right: var(--hechima-flick-w); }
@@ -7073,8 +7102,11 @@ body.hechima-flick-on .mobile-navbar {
   body.hechima-flick-on .mobile-navbar { transform: none; }
 }
 
-/* 左右の入替は横持ちでしか意味がない */
-@media (orientation: portrait) { .hechima-flick-side { display: none; } }
+/* 左右の入替は、横持ちならパネルの位置、縦持ちなら 2 面の並び順。
+   **縦持ちで面が 1 つしかないときだけ**意味がないので、そのときだけ隠す */
+@media (orientation: portrait) {
+  .hechima-flick[data-qwerty="off"] .hechima-flick-side { display: none; }
+}
 `;
 
 function injectFlickStyles() {
@@ -7101,6 +7133,7 @@ class FlickPanel {
         this.kbd = null;
         this.barEl = null;
         this.removeStyles = null;
+        this.kbd2 = null;  // 並べて置く英字面（QWERTY）
         this.press = null; // 候補バーのタップ判定（移動量でスクロールと区別）
         // show() は途中で IME を ON にする = onStatus が飛ぶ。自動表示の追従がそこで
         // 走ると**二重にマウントされる**ので、開いている最中であることを見せる
@@ -7109,6 +7142,20 @@ class FlickPanel {
 
     get visible() {
         return !!this.kbd;
+    }
+
+    /**
+     * 英字面（QWERTY）を並べるか。**画面の広さで決める** —— 縦持ちは左右に分けるので
+     * 幅が、横持ちは上下に積むので高さが要る。スマホではどちらも足りない
+     * （設定で "on" / "off" に固定もできる）。
+     */
+    get wantQwerty() {
+        const mode = this.plugin.settings.flick?.qwerty ?? "auto";
+        if (mode === "on") return true;
+        if (mode === "off") return false;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        return h > w ? w >= 700 : h >= 600;
     }
 
     get side() {
@@ -7144,7 +7191,11 @@ class FlickPanel {
         // それは px の上限で足りる）。診断のために印だけ残す
         this.root.dataset.env = Platform.isMobile ? "mobile" : "desktop";
         this.barEl = this.root.createDiv({ cls: "hechima-flick-bar" });
-        const area = this.root.createDiv({ cls: "hechima-flick-area" });
+        const faces = this.root.createDiv({ cls: "hechima-flick-faces" });
+        const area = faces.createDiv({ cls: "hechima-flick-area" });
+        const withQwerty = this.wantQwerty;
+        this.root.dataset.qwerty = withQwerty ? "on" : "off";
+        const area2 = withQwerty ? faces.createDiv({ cls: "hechima-flick-area2" }) : null;
         this.buildControls();
         document.body.appendChild(this.root);
         document.body.classList.add("hechima-flick-on", `hechima-flick-${this.side}`);
@@ -7154,6 +7205,16 @@ class FlickPanel {
             getComposingTail: () => this.ime.composing,
             onOp: (op) => this.onOp(op),
         });
+        // **2 面目は同じ配線でよい。** FlickEngine は mount ごとに状態が独立していて、
+        // 出てくるのも同じ FlickOp —— 英字面は direct レイヤなので {type:"text"} が来る
+        if (area2) {
+            const qmap = BUNDLED_FLICKMAPS[QWERTY_FLICKMAP];
+            if (qmap) {
+                this.kbd2 = FlickEngine.mount(area2, FlickEngine.decodeFlickmap(qmap), {
+                    onOp: (op) => this.onOp(op),
+                });
+            }
+        }
 
         this.guardFocus();
         // 未確定の描き替えを候補バーにも回す（表示の一元点は ime.show / ime.hide）
@@ -7168,6 +7229,8 @@ class FlickPanel {
         if (!this.kbd) return;
         this.kbd.destroy();
         this.kbd = null;
+        this.kbd2?.destroy();
+        this.kbd2 = null;
         this.ime.onSegments = null;
         this.ime.setCandidateWindow(true);
         this.ime.fep?.setSuggest(false); // 打鍵ごとの変換を止める
@@ -7630,12 +7693,12 @@ module.exports = class HechimaProbePlugin extends Plugin {
                 roleKeys: {},
                 // フリックキーボード。**配列とは別立て**（keymap v2 と flickmap は別の
                 // 語彙で、混ぜると「フリックを選ぶと物理キーボードの配列が死ぬ」ことになる）
-                flick: { auto: false, side: "right", map: "flick_standard" },
+                flick: { auto: false, side: "right", map: "flick_standard", qwerty: "auto" },
             },
             await this.loadSettingsWithMigration()
         );
         this.settings.flick = Object.assign(
-            { auto: false, side: "right", map: "flick_standard" },
+            { auto: false, side: "right", map: "flick_standard", qwerty: "auto" },
             this.settings.flick ?? {}
         );
         // **旧 id の版が同時に動いていないか。** 両方が有効だと 2 つの IME が打鍵を
@@ -8772,10 +8835,35 @@ class HechimaSettingTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
+            .setName("英字キーボードを並べる")
+            .setDesc(
+                "かなのフリック面の隣に QWERTY を置きます（英単語・URL・コード片のように" +
+                    "かなを通さないものを打つため。かなにはしません）。" +
+                    "横向きなら上下、縦向きなら左右に並びます。" +
+                    "自動 = 画面に余裕があるときだけ（スマホでは狭すぎるので出しません）"
+            )
+            .addDropdown((d) => {
+                d.addOption("auto", "自動（画面に余裕があれば）");
+                d.addOption("on", "常に並べる");
+                d.addOption("off", "並べない");
+                d.setValue(this.plugin.settings.flick?.qwerty ?? "auto");
+                d.onChange(async (mode) => {
+                    this.plugin.settings.flick.qwerty = mode;
+                    await this.plugin.saveSettings();
+                    // 出ているなら組み直して即座に反映する
+                    if (this.plugin.flick.visible) {
+                        this.plugin.flick.hide();
+                        await this.plugin.toggleFlick();
+                    }
+                });
+            });
+
+        new Setting(containerEl)
             .setName("横向きのときの位置")
             .setDesc(
                 "横持ちでは画面の片側にだけ出します。キーボード上の「⇄ 左右」ボタンでも" +
-                    "その場で入れ替えられます（持ち替えるたびに設定を開かなくてよいように）"
+                    "その場で入れ替えられます（持ち替えるたびに設定を開かなくてよいように）。" +
+                    "縦向きで英字キーボードを並べているときは、同じボタンが 2 面の左右を入れ替えます"
             )
             .addDropdown((d) => {
                 d.addOption("right", "右");
