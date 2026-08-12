@@ -3082,7 +3082,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.21.0";
+	const HECHIMA_VERSION = "0.22.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	const ROMAJI = {
@@ -3524,6 +3524,74 @@ var Hechima = (function () {
 				kind: "yomi"
 			}]);
 			else cb.hide();
+			maybeSuggest();
+		}
+		let suggestSegs = null;
+		let suggestCands = [];
+		let suggestKey = "";
+		let suggestGen = 0;
+		let suggestOn = true;
+		/** いまのよみを求める（pend を flush した形。表示は変えない） */
+		const suggestYomi = () => composing() ? resolveRomaji(kana, pend, true).kana : "";
+		function clearSuggest() {
+			const had = suggestKey !== "" || suggestCands.length > 0;
+			suggestSegs = null;
+			suggestCands = [];
+			suggestKey = "";
+			suggestGen++;
+			if (had && cb.suggest) cb.suggest([]);
+		}
+		/** よみが変わったときだけ引き直す（render は候補移動などでも呼ばれる） */
+		function maybeSuggest() {
+			if (!suggestOn || !cb.suggest || !cb.convert) return;
+			if (segs) {
+				if (suggestKey) clearSuggest();
+				return;
+			}
+			const yomi = suggestYomi();
+			if (yomi === suggestKey) return;
+			if (!yomi) {
+				clearSuggest();
+				return;
+			}
+			suggestKey = yomi;
+			const gen = ++suggestGen;
+			Promise.resolve(cb.convert(yomi)).then((result) => {
+				if (gen !== suggestGen || segs || suggestYomi() !== yomi) return;
+				const cands = result?.[0]?.candidates;
+				if (!result || !result.length || !cands || !cands.length) {
+					suggestSegs = null;
+					suggestCands = [];
+					cb.suggest([]);
+					return;
+				}
+				suggestSegs = result;
+				suggestCands = cands.slice();
+				cb.suggest(suggestCands.slice());
+			}).catch(() => {});
+		}
+		/**
+		* サジェストの n 番目を選んで確定する（v0.22.0+）。
+		* **保持した変換結果を Phase 2 へ昇格させてから部分確定する**ので、変換は走り直さない。
+		* 選んだ語がよみ全体を覆っていなければ、残りは候補選択状態で続く（commitFocused と同じ）。
+		*/
+		function commitSuggestion(index) {
+			if (!active || segs || !suggestSegs) return false;
+			const text = suggestCands[index];
+			if (text === void 0) return false;
+			if (suggestYomi() !== suggestKey) return false;
+			const promoted = suggestSegs;
+			kana = resolveRomaji(kana, pend, true).kana;
+			pend = "";
+			segs = promoted.map(ingestSegment);
+			focus = 0;
+			const at = segs[0].candidates.indexOf(text);
+			segs[0].idx = at >= 0 ? at : 0;
+			resetAddl();
+			suggestSegs = null;
+			suggestCands = [];
+			suggestKey = "";
+			return commitFocused();
 		}
 		const joined = () => (segs ?? []).map((s, i) => segText(s, i)).join("");
 		let lastCommit = null;
@@ -4041,6 +4109,14 @@ var Hechima = (function () {
 				return nav === null ? false : nav;
 			},
 			commitFocused,
+			commitSuggestion,
+			setSuggest(on) {
+				const next = !!on;
+				if (suggestOn === next) return;
+				suggestOn = next;
+				if (!suggestOn) clearSuggest();
+				else maybeSuggest();
+			},
 			setEngine(eng, keyOf) {
 				if (engine && engine !== eng) {
 					try {
@@ -6266,6 +6342,7 @@ class HechimaIME {
         // show / hide** —— cb.show だけに仕込むと確定時に戻らない（確定で hide は呼ばれず、
         // ホストの commit がクリアする契約のため。`docs/flick-engine-embedding.md` §2）
         this.onSegments = null;
+        this.lastSuggest = []; // よみ入力中の候補（打ちながら出る）
         // 差し替え可能なホスト（null = Obsidian 標準の CM6 エディタ）。
         // **CM6 以外のエディタが自分を宿主として名乗るための口**で、縦書きビュー
         // （obsidian-minogami）がこれを使う。cb 契約の「文書の所有者はホスト」を
@@ -6477,9 +6554,17 @@ class HechimaIME {
                     this.editor()?.replaceSelection(text);
                     this.hide();
                 },
+                // よみ入力中の候補（打ちながら出る）。**フリックの候補バーだけが使う** ——
+                // 物理キーボードで CM6 の候補窓に出すと、標準 IME と作法が変わる
+                // （変換前に窓は出ない）。渡さなければ取得自体が走らないので、
+                // フリックを出していない間は変換の呼び出しも増えない
+                suggest: (items) => this.showSuggest(items),
                 hostKey: (name) => applyHostKey(this.editor(), name),
                 retract: (text) => this.retract(text),
             });
+            // **サジェストは既定で切っておく。** 打鍵のたびに変換が走るので、
+            // 候補バー（フリック）を出していない間は要らない
+            this.fep.setSuggest(false);
             this.setKeymap(this.keymapId);
             // 候補行のクリック/タップ（表示層からの唯一の逆方向配線）
             if (this.view) this.view.handlers.onSelectCandidate = (i) => this.fep.selectCandidate(i);
@@ -6512,6 +6597,7 @@ class HechimaIME {
     hide() {
         this.composing = "";
         this.lastSegments = null;
+        this.lastSuggest = [];
         this.onSegments?.(null);
         if (this.host) {
             this.host.hide();
@@ -6721,6 +6807,20 @@ class HechimaIME {
         if (this.fep?.feedDirect(tap)) return true;
         applyHostKey(this.editor(), tap.key, tap);
         return false;
+    }
+
+    /** cb.suggest を受けて保持し、候補バーへ回す */
+    showSuggest(items) {
+        this.lastSuggest = items ?? [];
+        this.onSegments?.(this.lastSegments);
+    }
+
+    /**
+     * サジェスト（よみ入力中の候補）のタップ。**選んだ語はその場で確定**し、
+     * よみが残っていれば候補選択として続く（フリックの作法。tapCandidate と同じ考え方）。
+     */
+    tapSuggestion(i) {
+        return this.fep?.commitSuggestion(i) ?? false;
     }
 
     /** 変換中か（候補が出ている = 候補選択中。表示の状態が唯一の情報源） */
@@ -7060,6 +7160,7 @@ class FlickPanel {
         // 未確定の描き替えを候補バーにも回す（表示の一元点は ime.show / ime.hide）
         this.ime.onSegments = (segments) => this.render(segments);
         this.ime.setCandidateWindow(false); // 候補はバーに一本化する
+        this.ime.fep?.setSuggest(true);     // 打ちながら候補を出す（バーが受け皿になる）
         this.render(this.ime.lastSegments ?? null);
         this.plugin.applyInputMode();
     }
@@ -7070,6 +7171,7 @@ class FlickPanel {
         this.kbd = null;
         this.ime.onSegments = null;
         this.ime.setCandidateWindow(true);
+        this.ime.fep?.setSuggest(false); // 打鍵ごとの変換を止める
         this.root?.remove();
         this.root = null;
         this.barEl = null;
@@ -7149,11 +7251,19 @@ class FlickPanel {
             const press = this.press;
             this.press = null;
             if (!press) return;
-            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) this.ime.tapCandidate(press.idx);
+            if (Math.hypot(e.clientX - press.x, e.clientY - press.y) >= 8) return; // 横スクロール
+            // どちらの段の候補をタップしたか（変換中の文節候補 / よみ入力中のサジェスト）
+            if (this.barEl.dataset.phase === "suggest") this.ime.tapSuggestion(press.idx);
+            else this.ime.tapCandidate(press.idx);
         });
     }
 
-    /** 候補バーを描き替える。segments が空なら空にする（高さは CSS で確保済み） */
+    /**
+     * 候補バーを描き替える。**2 つの段が同じ帯に出る**:
+     *   よみ入力中（Phase 1）= サジェスト（打ちながら出る候補。タップで確定）
+     *   変換中（Phase 2）    = 文節の候補（タップでその文節を確定して次へ）
+     * どちらも「タップした語が本文に入る」ので、指から見れば区別は要らない。
+     */
     render(segments) {
         if (!this.barEl) return;
         this.kbd?.setComposing(!!segments?.length);
@@ -7161,7 +7271,7 @@ class FlickPanel {
         const cands = focus?.candidates;
         const additional = focus?.additional ?? [];
         if (!focus || !cands || (cands.length < 2 && !additional.length)) {
-            this.barEl.replaceChildren();
+            this.renderSuggest();
             return;
         }
         const inAdditional = focus.additionalIndex !== undefined;
@@ -7183,6 +7293,21 @@ class FlickPanel {
         });
         this.barEl.replaceChildren(...items);
         this.barEl.querySelector(".is-selected")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        this.barEl.dataset.phase = "candidates";
+    }
+
+    /** よみ入力中の候補（サジェスト）。選択中の印は付けない —— まだ何も選んでいない */
+    renderSuggest() {
+        const items = (this.ime.lastSuggest ?? []).map((text, i) => {
+            const el = document.createElement("span");
+            el.className = "hechima-flick-cand";
+            el.textContent = text;
+            el.dataset.idx = String(i);
+            return el;
+        });
+        this.barEl.replaceChildren(...items);
+        this.barEl.dataset.phase = "suggest";
+        this.barEl.scrollLeft = 0;
     }
 
     destroy() {
