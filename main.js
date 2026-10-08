@@ -4617,7 +4617,7 @@ var Hechima = (function () {
 })(this, function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/hechima/version.ts
-	const HECHIMA_VERSION = "0.24.0";
+	const HECHIMA_VERSION = "0.25.0";
 	//#endregion
 	//#region src/hechima/session.ts
 	/** よみの表示文節。末尾の待ち（仮表示）があれば、その文字数を `pending` に添える */
@@ -5137,12 +5137,12 @@ var Hechima = (function () {
 		const joined = () => (segs ?? []).map((s, i) => segText(s, i)).join("");
 		let lastCommit = null;
 		function commit(text) {
-			const learned = !!(segs && cb.learn && !eiji);
-			if (learned && segs) try {
-				cb.learn(segs.map((s, i) => ({
-					key: s.key,
-					value: segText(s, i)
-				})));
+			const learned = segs && cb.learn && !eiji ? segs.map((s, i) => ({
+				key: s.key,
+				value: segText(s, i)
+			})) : null;
+			if (learned) try {
+				cb.learn(learned);
 			} catch {}
 			lastCommit = segs ? {
 				text,
@@ -5227,7 +5227,7 @@ var Hechima = (function () {
 			genId++;
 			resetAddl();
 			if (lastCommit.learned) try {
-				cb.unlearn?.();
+				cb.unlearn?.(lastCommit.learned);
 			} catch {}
 			lastCommit = null;
 			render();
@@ -5289,7 +5289,8 @@ var Hechima = (function () {
 			if (!segs || !cb.resize) return;
 			const idx = focus;
 			const gen = ++genId;
-			Promise.resolve(cb.resize(idx, offset)).then((result) => {
+			const keys = segs.map((s) => s.key);
+			Promise.resolve(cb.resize(idx, offset, keys)).then((result) => {
 				if (gen !== genId || !segs) return;
 				if (!result || !result.length) return;
 				segs = result.map(ingestSegment);
@@ -5808,7 +5809,7 @@ var Hechima = (function () {
 				});
 			});
 		}
-		async function resize(segmentIndex, offset) {
+		async function resize(segmentIndex, offset, keys) {
 			const info = await whenReady();
 			if (!info || !info.features.resize) return null;
 			return new Promise((resolve) => {
@@ -5819,7 +5820,8 @@ var Hechima = (function () {
 					id,
 					segIdx: segmentIndex,
 					offset,
-					maxCands
+					maxCands,
+					...keys && keys.length ? { keys: [...keys] } : {}
 				});
 			});
 		}
@@ -5866,14 +5868,18 @@ var Hechima = (function () {
 				});
 			});
 		}
-		async function revert() {
+		async function revert(segments) {
 			if (!await whenReady()) return false;
 			return new Promise((resolve) => {
 				const id = ++seq;
 				pendingLearn.set(id, resolve);
 				worker.postMessage({
 					type: "revert",
-					id
+					id,
+					...segments && segments.length ? {
+						kana: segments.map((s) => s.key).join(""),
+						values: segments.map((s) => s.value)
+					} : {}
 				});
 			});
 		}
@@ -5940,8 +5946,8 @@ var Hechima = (function () {
 				learn: (segments) => {
 					learn(segments);
 				},
-				unlearn: () => {
-					revert();
+				unlearn: (segments) => {
+					revert(segments);
 				}
 			})
 		};
@@ -6930,10 +6936,12 @@ class HechimaEngine {
         this.booting = null;
         this.suppressed = 0;
         this.stderr = [];
-        // 文節伸縮の 1:1 状態。wasm 側は v0.3.0+ でステートレスなので、
-        // 「直近の変換」という接続固有の状態はこちらが持つ（worker と同じ役割分担）
-        this.lastYomi = null;
+        // 文節伸縮の対象は hechima 0.25.0+ ならセッションが keys で渡してくる。
+        // 「直近の変換」は keys が来ないときの予備（worker と同じ役割分担）。
+        // 候補タップで前半を確定した後などはセッションの文節と食い違うので、keys を優先する
         this.lastKeys = null;
+        // 最後に成立した学習（unlearn の照合用）。Mozc が戻せるのは直近の 1 件だけ
+        this.lastLearned = null;
         this.saveTimer = null;
     }
 
@@ -7138,7 +7146,6 @@ class HechimaEngine {
     remember(segments) {
         if (segments && segments.length) {
             this.lastKeys = segments.map((s) => s.key);
-            this.lastYomi = this.lastKeys.join("");
         }
         return segments;
     }
@@ -7151,12 +7158,16 @@ class HechimaEngine {
 
     /**
      * 文節伸縮。`hechima_convert2`（ステートレス）に、先頭からの各文節よみ長を渡して再変換する。
-     * 直近の変換という 1:1 の状態はこちら持ち。伸縮不能・範囲外は null = 呼び元は現状維持。
+     * 対象はセッションが渡す keys（いまの文節よみ列）。無ければ直近の変換。
+     * 伸縮不能・範囲外は null = 呼び元は現状維持。
      */
-    resize(segmentIndex, offset) {
-        if (!this.mod || !this.has("convert2") || !this.lastYomi || !this.lastKeys) return null;
-        if (segmentIndex < 0 || segmentIndex >= this.lastKeys.length) return null;
-        const lens = this.lastKeys.map((k) => Array.from(k).length);
+    resize(segmentIndex, offset, keys) {
+        const valid = Array.isArray(keys) && keys.length > 0 &&
+            keys.every((k) => typeof k === "string" && k.length > 0);
+        const base = valid ? keys : this.lastKeys;
+        if (!this.mod || !this.has("convert2") || !base) return null;
+        if (segmentIndex < 0 || segmentIndex >= base.length) return null;
+        const lens = base.map((k) => Array.from(k).length);
         const target = lens[segmentIndex] + offset;
         if (target < 1 || target > 255) return null;
         const sizes = [...lens.slice(0, segmentIndex), target];
@@ -7164,7 +7175,7 @@ class HechimaEngine {
             "hechima_convert2",
             "string",
             ["string", "string", "number"],
-            [this.lastYomi, sizes.join(","), MAX_CANDS]
+            [base.join(""), sizes.join(","), MAX_CANDS]
         );
         return this.remember(parseSegments(json));
     }
@@ -7192,6 +7203,8 @@ class HechimaEngine {
                 ["string", "string", "string"],
                 [kana, sizes.join(","), values.join("\t")]
             );
+            // 不成立の学習の後は wasm の revert も no-op なので、照合用の記録も消して揃える
+            this.lastLearned = rc === 0 ? segments.map((s) => ({ key: s.key, value: s.value })) : null;
             if (rc === 0) this.scheduleSave();
         } catch {
             /* 学習の失敗で入力を止めない */
@@ -7251,11 +7264,22 @@ class HechimaEngine {
         }
     }
 
-    /** 確定アンドゥの学習巻き戻し。不成立 learn の後は no-op */
-    unlearn() {
+    /**
+     * 確定アンドゥの学習巻き戻し。不成立 learn の後は no-op。
+     * segments（hechima 0.25.0+）が来たら、最後に成立した学習と一致するときだけ戻す
+     * （エンジンは 1 つで、セッションは複数ありうる = `ime.js` と開発用の `probe.js`）
+     */
+    unlearn(segments) {
         if (!this.mod || !this.has("revert")) return;
+        if (Array.isArray(segments)) {
+            const last = this.lastLearned;
+            const same = !!last && segments.length === last.length &&
+                segments.every((s, i) => s.key === last[i].key && s.value === last[i].value);
+            if (!same) return;
+        }
         try {
             this.mod.ccall("hechima_revert", "number", [], []);
+            this.lastLearned = null;
             this.scheduleSave();
         } catch {
             /* 同上 */
@@ -7266,10 +7290,10 @@ class HechimaEngine {
     callbacks() {
         return {
             convert: (yomi) => this.convert(yomi),
-            resize: (i, off) => this.resize(i, off),
+            resize: (i, off, keys) => this.resize(i, off, keys),
             reconvert: (surface) => this.reconvert(surface),
             learn: (segments) => this.learn(segments),
-            unlearn: () => this.unlearn(),
+            unlearn: (segments) => this.unlearn(segments),
         };
     }
 }
